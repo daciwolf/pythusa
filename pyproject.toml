@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pythusa"
+version = "0.1.0"
+description = "High-throughput IPC and shared-memory worker orchestration for NumPy workloads."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = {file = "LICENSE"}
+authors = [
+  {name = "PYTHUSA Contributors"},
+]
+keywords = ["ipc", "shared-memory", "multiprocessing", "numpy", "ring-buffer"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: System :: Distributed Computing",
+]
+dependencies = [
+  "numpy",
+  "psutil",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+examples = ["joblib>=1.4"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["pythusa*"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
