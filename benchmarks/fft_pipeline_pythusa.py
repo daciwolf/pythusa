@@ -35,13 +35,21 @@ def _ring_name(consumer_index: int) -> str:
     return f"{RING_PREFIX}_{consumer_index}"
 
 
-def _consume_exact(reader: pythusa.SharedRingBuffer, dst: memoryview, nbytes: int) -> bool:
-    reader_mem_view = reader.expose_reader_mem_view(nbytes)
-    if reader_mem_view[2] < nbytes:
-        return False
-    reader.simple_read(reader_mem_view, dst)
-    reader.inc_reader_pos(nbytes)
-    return True
+def _ring_frame_from_view(ring_view: tuple[memoryview, memoryview | None, int, bool]) -> np.ndarray | None:
+    mv1, _, size_ready, wrap_around = ring_view
+    if size_ready < PAIR_NBYTES:
+        return None
+    # Each batch is exactly PAIR_NBYTES and the ring size is an integer
+    # multiple of that batch size, so a single batch should always be contiguous.
+    assert not wrap_around, "expected contiguous batch-sized ring view"
+    return np.ndarray((ROWS, COLS_PER_CONSUMER), dtype=DTYPE, buffer=mv1)
+
+
+def _release_ring_view(ring_view: tuple[memoryview, memoryview | None, int, bool]) -> None:
+    mv1, mv2, _, _ = ring_view
+    mv1.release()
+    if mv2 is not None:
+        mv2.release()
 
 
 def _throughput_mb_s(owner: object, nbytes: int) -> float | None:
@@ -74,22 +82,28 @@ def signal_producer(consumer_index: int) -> None:
     second_base = (freq + 0.5) * base_t
     first_angles = np.empty(ROWS, dtype=DTYPE)
     second_angles = np.empty(ROWS, dtype=DTYPE)
-    frame = np.empty((ROWS, COLS_PER_CONSUMER), dtype=DTYPE)
 
     while True:
-        np.add(first_base, phase, out=first_angles)
-        np.sin(first_angles, out=frame[:, 0])
-        np.subtract(second_base, phase, out=second_angles)
-        np.cos(second_angles, out=frame[:, 1])
-
-        written = writer.write_array(frame.ravel())
-        if written == 0:
-            _maybe_sleep()
-            continue
+        writer_mem_view = writer.expose_writer_mem_view(PAIR_NBYTES)
+        frame = None
+        try:
+            frame = _ring_frame_from_view(writer_mem_view)
+            if frame is None:
+                _maybe_sleep()
+                continue
+            np.add(first_base, phase, out=first_angles)
+            np.sin(first_angles, out=frame[:, 0])
+            np.subtract(second_base, phase, out=second_angles)
+            np.cos(second_angles, out=frame[:, 1])
+            writer.inc_writer_pos(PAIR_NBYTES)
+        finally:
+            if frame is not None:
+                del frame
+            _release_ring_view(writer_mem_view)
 
         batches_sent = getattr(signal_producer, "_batches_sent", 0) + 1
         signal_producer._batches_sent = batches_sent
-        throughput_mb_s = _throughput_mb_s(signal_producer, written)
+        throughput_mb_s = _throughput_mb_s(signal_producer, PAIR_NBYTES)
         if ENABLE_PERIODIC_REPORTS and throughput_mb_s is not None:
             print(
                 f"producer={consumer_index} cols={start_col}:{stop_col} batch={batches_sent} "
@@ -105,27 +119,32 @@ def fft_consumer(
     reader = pythusa.get_reader(_ring_name(consumer_index))
     start_col = consumer_index * COLS_PER_CONSUMER
     stop_col = start_col + COLS_PER_CONSUMER
-    flat = np.empty(ROWS * COLS_PER_CONSUMER, dtype=DTYPE)
-    flat_bytes = memoryview(flat).cast("B")
-    frame = flat.reshape(ROWS, COLS_PER_CONSUMER)
     # Drop any backlog written before this reader finished starting up.
     reader.jump_to_writer()
 
     while True:
         try:
-            has_batch = _consume_exact(reader, flat_bytes, PAIR_NBYTES)
+            reader_mem_view = reader.expose_reader_mem_view(PAIR_NBYTES)
         except AssertionError as exc:
             if "max_amount_readable > ring_buffer_size" not in str(exc):
                 raise
             reader.jump_to_writer()
             _maybe_sleep()
             continue
-        if not has_batch:
-            _maybe_sleep()
-            continue
+        frame = None
+        try:
+            frame = _ring_frame_from_view(reader_mem_view)
+            if frame is None:
+                _maybe_sleep()
+                continue
 
-        spectrum = np.fft.rfft(frame, axis=0)
-        peak = float(np.abs(spectrum).max())
+            spectrum = np.fft.rfft(frame, axis=0)
+            peak = float(np.abs(spectrum).max())
+            reader.inc_reader_pos(PAIR_NBYTES)
+        finally:
+            if frame is not None:
+                del frame
+            _release_ring_view(reader_mem_view)
         with processed_bytes.get_lock():
             processed_bytes[consumer_index] += PAIR_NBYTES
 
@@ -173,6 +192,8 @@ def main() -> None:
                     name=ring_name,
                     size=PAIR_NBYTES * RING_DEPTH,
                     num_readers=1,
+                    cache_align=True,
+                    cache_size=64,
                 )
             )
             manager.create_task(

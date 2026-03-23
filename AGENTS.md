@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-The installable package lives in `src/pythusa/`. Keep the public API small in `src/pythusa/__init__.py`; place implementation details in the existing underscored subpackages: `_buffers/` for the shared ring buffer, `_workers/` for process orchestration, `_sync/` for events, `_core/` for worker-local accessors, `_processing/` for NumPy helpers, `_shared_memory/` for layout logic, and `_utils/` for small support code. Tests live in `tests/`, and runnable examples live in `examples/`.
+The installable package lives in `src/pythusa/`. Keep the public API small in `src/pythusa/__init__.py`; place implementation details in the existing underscored subpackages: `_buffers/` for the shared ring buffer, `_workers/` for process orchestration, `_sync/` for events, `_core/` for worker-local accessors, `_processing/` for NumPy helpers, `_shared_memory/` for layout logic, and `_utils/` for small support code. Tests live in `tests/`, runnable examples live in `examples/`, and benchmark runners live in `benchmarks/`.
 
 ## Build, Test, and Development Commands
 Use the editable install while developing:
@@ -12,7 +12,7 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-Run the full test suite with `python -m pytest -q`. Run a focused file during iteration, for example `python -m pytest tests/test_ring_buffer_basic.py -q`. Smoke-test examples directly, such as `python examples/basic_workers.py`.
+Run the full test suite with `python -m pytest -q`. Run a focused file during iteration, for example `python -m pytest tests/test_ring_buffer_basic.py -q`. Smoke-test examples directly with `python examples/basic_workers.py`, and run benchmarks from `benchmarks/`, for example `python benchmarks/dsp_benchmark_suite.py`.
 
 ## Coding Style & Naming Conventions
 Follow the existing Python style: 4-space indentation, type hints on public functions, `from __future__ import annotations` in modules, and concise docstrings where behavior is non-obvious. Use `snake_case` for modules, functions, and variables; use `PascalCase` for classes and dataclasses such as `RingSpec` and `ProcessMetrics`. Keep internal-only modules under underscored packages and preserve the current import grouping: standard library, third-party, then local imports.
