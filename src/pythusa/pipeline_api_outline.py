@@ -33,6 +33,16 @@ The intended compile path is:
 -> `TaskSpec`
 -> `Manager`
 
+Internal design note:
+
+- v0 should still store stages and streams as a small graph using plain Python
+  data structures so future fan-out and fan-in can be added without rewriting
+  the planner
+- v0 does not need an external graph library if adjacency maps, cycle checks,
+  and topological ordering are enough
+- public branching semantics remain a follow-on step after the linear API is
+  stable
+
 The public API should not hide that buffering exists, but it should remove the
 need for a new user to wire rings and tasks by hand for common cases.
 """
@@ -51,7 +61,6 @@ class StreamSpec:
 
     Expected use:
     - research users declare the frame shape and dtype explicitly
-    - sensor users also attach `sample_rate_hz` for latency budgeting
     - the pipeline compiler uses this object to derive ring size and view shape
 
     Important design rule:
@@ -62,12 +71,14 @@ class StreamSpec:
     - one `StreamSpec` normally maps to one shared-memory ring in v0
     - the stream name becomes the stable user-facing identifier for metrics,
       compile plans, benchmark output, and reproducibility notes
+    - later fan-out may map one logical stream either to one shared ring with
+      multiple readers or to per-branch rings depending on the public semantics
+      chosen for DAG support
     """
 
     name: str
     shape: tuple[int, ...]
     dtype: Any
-    sample_rate_hz: float | None = None
     description: str | None = None
 
 
@@ -212,6 +223,12 @@ class Pipeline:
     - no hidden fan-out
     - no graph optimizer
     - no automatic fusion
+
+    Internal representation note:
+    - the planner should still keep topology in a graph-shaped form
+    - plain adjacency data and topological ordering are preferred first
+    - external graph libraries are unnecessary unless those simple structures
+      stop being sufficient
 
     Data-flow summary:
     - `add_*` methods collect declarative objects only

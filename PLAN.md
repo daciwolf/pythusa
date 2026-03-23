@@ -346,7 +346,9 @@ Design principles:
 - make data contracts visible: shape, dtype, and optional sample rate should be first-class
 - prefer explicit policies over hidden heuristics for backlog, dropping, and latency behavior
 - preserve a clear path from high-level API down to the low-level runtime for debugging and power use
-- avoid building a mini framework or graph DSL when a few plain Python objects will do
+- avoid building a mini framework or heavy graph DSL when a few plain Python objects and explicit edges will do
+- keep the internal pipeline representation graph-capable so future fan-out and fan-in do not require a rewrite
+- do not adopt an external graph library in v0 unless plain adjacency maps and topological validation prove insufficient
 
 User focus:
 
@@ -420,6 +422,7 @@ Tasks:
 - draft `Pipeline`, `Stage`, and `Profile` around the current runtime
 - design a stage contract for array-in/array-out processing
 - support at least the common cases: source -> processor -> sink and multi-stage chains
+- keep the internal compile model DAG-aware even while v0 only exposes linear chains
 - rebuild the README quickstart and a few examples on the new API
 
 Detailed implementation sequence:
@@ -436,11 +439,14 @@ Detailed implementation sequence:
 - Keep stage roles explicit: source, process, sink.
 - Require stage names to be explicit and stable so metrics and logs can refer to them.
 - Keep stage objects as thin data wrappers over the user callable and stream references.
+- Keep enough topology metadata that later releases can admit multiple upstream or downstream edges without replacing the core planner.
 
 3. Build the pipeline wrapper.
 - `Pipeline` should compile down to the current `Manager`, `TaskSpec`, and `RingSpec`.
 - Keep ring sizing and reader counts internal by default, but allow explicit override for advanced users.
-- Limit v0 to linear and branch-free pipelines unless a real use case requires fan-out.
+- Keep the public v0 surface linear and branch-free while representing the compiled topology as a graph internally.
+- Plan explicitly for two follow-on topology cases after v0: fan-out from one stream to multiple downstream stages, and fan-in from multiple upstream streams into one join stage.
+- Do not introduce an external graph library in v0 unless plain adjacency structures, cycle checks, and topological ordering become a real maintenance problem.
 - Make the compile step inspectable so a power user can see the generated rings and tasks.
 
 4. Expose operational policy at construction time.
@@ -491,13 +497,18 @@ Open design decisions to settle before coding:
 - whether process stages should support both return-by-value and output-buffer-writing in v0, or only one fast path first
 - whether pipeline compilation should happen eagerly on `add_*` calls or lazily at `run()`
 - whether `Pipeline.metrics()` should return a single snapshot dict first or a richer typed object
+- how future fan-out should behave: shared broadcast ring, per-branch rings, or a configurable policy
+- how future fan-in should synchronize inputs: exact zip, latest-value join, windowed join, or an explicit user-side barrier
+- when an external graph library would be justified, if ever, beyond plain adjacency maps and topological validation
 
 Default decisions unless implementation proves otherwise:
 
 - use plain dataclasses, not a class hierarchy with behavior-heavy subclasses
 - compile lazily at `run()` but make the compiled plan inspectable
 - start with return-by-value stage functions plus explicit source/sink roles
-- keep branching and fan-out out of v0
+- keep the public v0 API linear, but model pipeline internals as a DAG using plain Python adjacency data
+- defer fan-out and fan-in until after the linear API is stable
+- do not pull in an external graph library for v0
 - make `sample_rate_hz` first-class and leave richer scientific metadata in user space for now
 
 Acceptance examples for Milestone C:
@@ -593,6 +604,7 @@ Immediate tasks:
 - add `StreamSpec` and `Profile` as pure public data objects
 - add explicit `SourceStage`, `ProcessStage`, and `SinkStage`
 - build a minimal `Pipeline` that compiles down to the current runtime
+- keep the compiler internals DAG-capable so later fan-in and fan-out do not require a surface-area rewrite
 - prove the API on one research-style example and one rocket/sensor-style example
 - keep the low-level runtime untouched and documented as the escape hatch
 
@@ -602,6 +614,7 @@ Definition of done:
 - low-level API remains available for power users
 - stream shape, dtype, and sample rate are visible in the public API
 - the first public API is small enough to explain on one page without hand-waving
+- the internal compile model leaves a clean path to future fan-in and fan-out support
 
 ## Phase 3: Runtime Profiles and Observability
 
@@ -671,13 +684,18 @@ The next sequence should be:
 - one rocket/sensor detection example
 - keep both examples honest about frame size and latency
 
-3. Promote profiles and metrics into runtime APIs
+3. Extend from linear chains to explicit DAG topologies after the baseline API is stable
+- add supported fan-out and fan-in as explicit public semantics rather than implicit magic
+- choose clear behavior for broadcast, tee, and join cases before broadening the API surface
+- keep using plain graph-shaped data structures unless a real need for an external graph library appears
+
+4. Promote profiles and metrics into runtime APIs
 - do not keep the best ergonomics trapped in benchmark scripts
 
-4. Rewrite the README quickstart around the stable API
+5. Rewrite the README quickstart around the stable API
 - the low-level path should become an advanced section, not the first impression
 
-5. Finish research packaging and validation
+6. Finish research packaging and validation
 - CI, install polish, release checklist, and reproducibility docs
 
 ## Collaboration Model
