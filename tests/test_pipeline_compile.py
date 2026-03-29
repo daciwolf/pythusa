@@ -6,11 +6,12 @@ from unittest.mock import MagicMock, patch
 
 try:
     import numpy as np
-    from pythusa import Pipeline
+    from pythusa import Pipeline, ProcessMetrics
     from pythusa._pipeline._helpers import _invoke_task_with_bindings
 except ModuleNotFoundError:  # pragma: no cover - environment dependency
     np = None
     Pipeline = None
+    ProcessMetrics = None
     _invoke_task_with_bindings = None
 
 
@@ -258,7 +259,7 @@ class PipelineCompileTests(unittest.TestCase):
         returned = pipe.add_task.toggleable(
             "acquire",
             activate_on="shutdown",
-            fn=_source_with_shutdown,
+            fn=_source_task,
             writes={"samples": "samples"},
             events={"shutdown": "shutdown"},
         )
@@ -430,6 +431,57 @@ class PipelineCompileTests(unittest.TestCase):
         pipe.start.assert_called_once_with()
         pipe.join.assert_called_once_with()
 
+    def test_start_monitor_delegates_to_manager_and_returns_pipeline(self):
+        pipe = Pipeline("radar")
+        pipe._manager.start_monitor = MagicMock()
+
+        returned = pipe.start_monitor(interval_s=0.25)
+
+        self.assertIs(returned, pipe)
+        pipe._manager.start_monitor.assert_called_once_with(interval_s=0.25)
+
+    def test_metrics_returns_one_snapshot_for_named_task(self):
+        pipe = Pipeline("radar")
+        pipe.add_task("worker", fn=_task_fn)
+        snap = ProcessMetrics(
+            name="worker",
+            pid=1,
+            cpu_percent=2.0,
+            memory_rss_mb=3.0,
+            nice=0,
+            ring_pressure={"samples": 40},
+            sampled_at=4.0,
+        )
+        pipe._manager._metrics["worker"] = snap
+
+        self.assertIs(pipe.metrics("worker"), snap)
+
+    def test_metrics_returns_snapshot_mapping_for_all_tasks(self):
+        pipe = Pipeline("radar")
+        pipe.add_task("worker_a", fn=_task_fn)
+        pipe.add_task("worker_b", fn=_task_fn)
+        snap = ProcessMetrics(
+            name="worker_a",
+            pid=1,
+            cpu_percent=2.0,
+            memory_rss_mb=3.0,
+            nice=0,
+            ring_pressure={},
+            sampled_at=4.0,
+        )
+        pipe._manager._metrics["worker_a"] = snap
+
+        self.assertEqual(
+            pipe.metrics(),
+            {"worker_a": snap, "worker_b": None},
+        )
+
+    def test_metrics_rejects_unknown_task_name(self):
+        pipe = Pipeline("radar")
+
+        with self.assertRaisesRegex(KeyError, "not registered"):
+            pipe.metrics("missing")
+
     def test_save_and_reconstruct_round_trip_pipeline_declaration(self):
         pipe = Pipeline("radar")
         pipe.add_stream("samples", shape=(4,), dtype=np.float32, cache_align=False)
@@ -493,7 +545,7 @@ class PipelineCompileTests(unittest.TestCase):
         pipe.add_task.toggleable(
             "acquire",
             activate_on="shutdown",
-            fn=_source_with_shutdown,
+            fn=_source_task,
             writes={"samples": "samples"},
             events={"shutdown": "shutdown"},
         )
@@ -684,7 +736,7 @@ class PipelineCompileTests(unittest.TestCase):
         event = _FakeToggleEvent()
         calls: list[str] = []
 
-        def task_fn(*, shutdown) -> None:
+        def task_fn() -> None:
             calls.append("fn")
             if len(calls) == 2:
                 raise _StopLoop
@@ -707,7 +759,7 @@ class PipelineCompileTests(unittest.TestCase):
         event = _FakeSwitchEvent()
         calls: list[str] = []
 
-        def task_fn(*, shutdown) -> None:
+        def task_fn() -> None:
             calls.append("fn")
             if len(calls) == 2:
                 raise _StopLoop
@@ -725,6 +777,27 @@ class PipelineCompileTests(unittest.TestCase):
 
         self.assertEqual(calls, ["fn", "fn"])
         self.assertEqual(event.calls, ["wait", "wait"])
+
+    def test_compile_allows_control_event_not_accepted_by_callable(self):
+        pipe = Pipeline("radar")
+
+        try:
+            pipe.add_stream("samples", shape=(1,), dtype=np.int32)
+            pipe.add_event("go")
+            pipe.add_task.toggleable(
+                "source",
+                activate_on="go",
+                fn=_source_task,
+                writes={"samples": "samples"},
+                events={"go": "go"},
+            )
+            pipe.add_task("sink", fn=_sample_reader, reads={"samples": "samples"})
+
+            pipe.compile()
+
+            self.assertIn("source", pipe._manager._task_specs)
+        finally:
+            pipe._manager.close()
 
     def test_compile_rejects_duplicate_local_binding_names(self):
         pipe = Pipeline("radar")

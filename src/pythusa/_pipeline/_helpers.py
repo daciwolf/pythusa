@@ -235,13 +235,23 @@ def _require_stream(
 
 
 def _validate_task_bindings(task_name: str, task: dict[str, Any]) -> None:
-    binding_names = _binding_names(task)
-    _validate_unique_binding_names(task_name, binding_names)
+    all_binding_names = _binding_names(task)
+    callable_binding_names = _callable_binding_names(task)
+    _validate_unique_binding_names(task_name, all_binding_names)
     _validate_task_control(task_name, task)
 
     signature = inspect.signature(task["fn"])
-    _validate_callable_accepts_bound_names(task_name, task["fn"], signature, binding_names)
-    _validate_required_parameters_are_bound(task_name, signature, set(binding_names))
+    _validate_callable_accepts_bound_names(
+        task_name,
+        task["fn"],
+        signature,
+        callable_binding_names,
+    )
+    _validate_required_parameters_are_bound(
+        task_name,
+        signature,
+        set(callable_binding_names),
+    )
 
 
 def _validate_task_control(task_name: str, task: dict[str, Any]) -> None:
@@ -274,6 +284,15 @@ def _binding_names(task: dict[str, Any]) -> list[str]:
         *task["writes"].keys(),
         *task["events"].keys(),
     ]
+
+
+def _callable_binding_names(task: dict[str, Any]) -> list[str]:
+    binding_names = _binding_names(task)
+    control_event = task.get("control_event")
+    control_mode = task.get("control_mode")
+    if control_mode is None or control_event is None:
+        return binding_names
+    return [name for name in binding_names if name != control_event]
 
 
 def _validate_unique_binding_names(task_name: str, binding_names: list[str]) -> None:

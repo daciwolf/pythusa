@@ -50,7 +50,7 @@ from typing import Any, Callable
 import numpy as np
 
 from .._sync.events import EventSpec
-from .._workers.manager import Manager
+from .._workers.manager import Manager, ProcessMetrics
 from ._helpers import (
     _invoke_task_with_bindings,
     build_stream_topology,
@@ -204,6 +204,25 @@ class Pipeline:
     def run(self) -> None:
         self.start()
         self.join()
+
+    def start_monitor(self, interval_s: float = 0.01) -> "Pipeline":
+        self._ensure_open()
+        self._manager.start_monitor(interval_s=interval_s)
+        return self
+
+    def metrics(
+        self,
+        task_name: str | None = None,
+    ) -> ProcessMetrics | dict[str, ProcessMetrics | None] | None:
+        if task_name is not None:
+            if task_name not in self._tasks:
+                raise KeyError(f"Task '{task_name}' is not registered.")
+            return self._manager.get_metrics(task_name)
+
+        return {
+            name: self._manager.get_metrics(name)
+            for name in self._tasks
+        }
 
     def stop(self) -> None:
         if self._closed or not self._started:

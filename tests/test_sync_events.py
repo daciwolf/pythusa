@@ -2,12 +2,23 @@
 
 from __future__ import annotations
 
+import multiprocessing as mp
 import unittest
 
 try:
     from pythusa._sync.events import WorkerEvent
 except ModuleNotFoundError:  # pragma: no cover - environment dependency
     WorkerEvent = None
+
+
+def _signal_event_n_times(event: WorkerEvent, count: int) -> None:
+    for _ in range(count):
+        event.signal()
+
+
+def _reset_event_n_times(event: WorkerEvent, count: int) -> None:
+    for _ in range(count):
+        event.reset()
 
 
 @unittest.skipIf(WorkerEvent is None, "sync dependencies are required")
@@ -79,6 +90,32 @@ class WorkerEventTests(unittest.TestCase):
 
         self.assertIn("[OPEN]", repr(event))
         self.assertIn("pending=1", repr(event))
+
+    def test_signal_in_child_process_increments_pending_in_parent(self) -> None:
+        event = WorkerEvent("ready")
+        ctx = mp.get_context("spawn")
+        proc = ctx.Process(target=_signal_event_n_times, args=(event, 2))
+
+        proc.start()
+        proc.join(timeout=5.0)
+
+        self.assertEqual(proc.exitcode, 0)
+        self.assertTrue(event.is_open())
+        self.assertEqual(event.pending, 2)
+
+    def test_reset_in_child_process_consumes_pending_in_parent(self) -> None:
+        event = WorkerEvent("ready")
+        event.signal()
+        event.signal()
+        ctx = mp.get_context("spawn")
+        proc = ctx.Process(target=_reset_event_n_times, args=(event, 1))
+
+        proc.start()
+        proc.join(timeout=5.0)
+
+        self.assertEqual(proc.exitcode, 0)
+        self.assertTrue(event.is_open())
+        self.assertEqual(event.pending, 1)
 
 
 if __name__ == "__main__":

@@ -167,17 +167,18 @@ def run_controlled_task(
         return fn(**kwargs)
 
     event = _activation_event(kwargs, activate_on)
+    fn_kwargs = _task_kwargs(kwargs, activate_on)
 
     if control_mode == "toggleable":
         while True:
             event.wait()
             event.reset()
-            fn(**kwargs)
+            fn(**fn_kwargs)
 
     if control_mode == "switchable":
         while True:
             event.wait()
-            fn(**kwargs)
+            fn(**fn_kwargs)
 
     raise ValueError(f"Unsupported task control mode: {control_mode!r}")
 
@@ -195,3 +196,13 @@ def _activation_event(
         raise KeyError(
             f"Controlled task expected bound event '{activate_on}' in kwargs."
         ) from exc
+
+
+def _task_kwargs(
+    kwargs: dict[str, Any],
+    activate_on: str | None,
+) -> dict[str, Any]:
+    task_kwargs = dict(kwargs)
+    if activate_on is not None:
+        task_kwargs.pop(activate_on, None)
+    return task_kwargs

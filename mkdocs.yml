@@ -1,0 +1,13 @@
+site_name: PYTHUSA
+site_description: Python-first shared-memory DSP pipelines
+site_url: https://<your-github-username>.github.io/pythusa/
+repo_url: https://github.com/<your-github-username>/pythusa
+repo_name: <your-github-username>/pythusa
+
+theme:
+  name: mkdocs
+
+nav:
+  - Home: index.md
+  - Pipeline API: pipeline.md
+  - Runtime: runtime.md
