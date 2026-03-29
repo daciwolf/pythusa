@@ -114,8 +114,9 @@ def build_pipeline() -> pythusa.Pipeline:
     pipe.add_stream("fft", shape=(2049,), dtype=np.complex64)
     pipe.add_event("shutdown")
 
-    pipe.add_task(
+    pipe.add_task.toggleable(
         "acquire",
+        activate_on="shutdown",
         fn=acquire,
         writes={"samples": "samples"},
         events={"shutdown": "shutdown"},

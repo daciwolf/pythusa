@@ -3,12 +3,15 @@ from __future__ import annotations
 import inspect
 from graphlib import CycleError, TopologicalSorter
 from typing import Any, Callable
+import warnings
 
 from .._buffers.ring import RingSpec
 from .._core.context import get_event, get_reader, get_writer
 from .._processing.numpy import bytes_for_shape
 from .._utils import align_size
 from .._workers.worker import TaskSpec
+from ._stream_io import make_reader_binding, make_writer_binding
+from ._task_wrappers import run_controlled_task
 
 _DEFAULT_RING_DEPTH = 32
 _DEFAULT_CACHE_SIZE = 64
@@ -29,6 +32,32 @@ def build_stream_topology(
         _validate_task_events(task_name, task, events)
 
     return stream_writers, stream_readers
+
+
+def warn_on_shared_event_fanout(
+    tasks: dict[str, dict[str, Any]],
+    events: dict[str, dict[str, Any]],
+) -> None:
+    event_users = {name: [] for name in events}
+
+    for task_name, task in tasks.items():
+        for event_name in task["events"].values():
+            if event_name in event_users:
+                event_users[event_name].append(task_name)
+
+    for event_name, task_names in event_users.items():
+        if len(task_names) <= 2:
+            continue
+
+        warnings.warn(
+            "Event "
+            f"'{event_name}' is bound into {len(task_names)} tasks "
+            f"({', '.join(task_names)}). "
+            "PYTHUSA events are intended for one producer/one consumer style "
+            "coordination. Prefer separate events per consumer instead of "
+            "sharing one event across many tasks.",
+            stacklevel=2,
+        )
 
 
 def build_task_graph(
@@ -74,7 +103,11 @@ def ring_spec_for_stream(stream: dict[str, Any], *, reader_count: int) -> RingSp
     )
 
 
-def task_spec_for_name(task_name: str, task: dict[str, Any]) -> TaskSpec:
+def task_spec_for_name(
+    task_name: str,
+    task: dict[str, Any],
+    streams: dict[str, dict[str, Any]],
+) -> TaskSpec:
     return TaskSpec(
         name=task_name,
         fn=_invoke_task_with_bindings,
@@ -86,6 +119,10 @@ def task_spec_for_name(task_name: str, task: dict[str, Any]) -> TaskSpec:
             dict(task["reads"]),
             dict(task["writes"]),
             dict(task["events"]),
+            task.get("control_mode"),
+            task.get("control_event"),
+            _binding_stream_specs(task["reads"], streams),
+            _binding_stream_specs(task["writes"], streams),
         ),
     )
 
@@ -95,19 +132,51 @@ def _invoke_task_with_bindings(
     reads: dict[str, str],
     writes: dict[str, str],
     events: dict[str, str],
+    control_mode: str | None = None,
+    control_event: str | None = None,
+    read_specs: dict[str, dict[str, Any]] | None = None,
+    write_specs: dict[str, dict[str, Any]] | None = None,
 ) -> Any:
     kwargs: dict[str, Any] = {}
+    read_specs = read_specs or {}
+    write_specs = write_specs or {}
 
     for local_name, stream_name in reads.items():
-        kwargs[local_name] = get_reader(stream_name)
+        kwargs[local_name] = make_reader_binding(
+            get_reader(stream_name),
+            **read_specs[local_name],
+        )
 
     for local_name, stream_name in writes.items():
-        kwargs[local_name] = get_writer(stream_name)
+        kwargs[local_name] = make_writer_binding(
+            get_writer(stream_name),
+            **write_specs[local_name],
+        )
 
     for local_name, event_name in events.items():
         kwargs[local_name] = get_event(event_name)
 
-    return fn(**kwargs)
+    return run_controlled_task(
+        fn,
+        control_mode=control_mode,
+        activate_on=control_event,
+        kwargs=kwargs,
+    )
+
+
+def _binding_stream_specs(
+    bindings: dict[str, str],
+    streams: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    specs: dict[str, dict[str, Any]] = {}
+    for local_name, stream_name in bindings.items():
+        stream = streams[stream_name]
+        specs[local_name] = {
+            "name": stream_name,
+            "shape": tuple(stream["shape"]),
+            "dtype": stream["dtype"],
+        }
+    return specs
 
 
 def _collect_task_reads(
@@ -168,10 +237,35 @@ def _require_stream(
 def _validate_task_bindings(task_name: str, task: dict[str, Any]) -> None:
     binding_names = _binding_names(task)
     _validate_unique_binding_names(task_name, binding_names)
+    _validate_task_control(task_name, task)
 
     signature = inspect.signature(task["fn"])
     _validate_callable_accepts_bound_names(task_name, task["fn"], signature, binding_names)
     _validate_required_parameters_are_bound(task_name, signature, set(binding_names))
+
+
+def _validate_task_control(task_name: str, task: dict[str, Any]) -> None:
+    control_mode = task.get("control_mode")
+    control_event = task.get("control_event")
+
+    if control_mode is None and control_event is None:
+        return
+
+    if control_mode not in {"switchable", "toggleable"}:
+        raise ValueError(
+            f"Task '{task_name}' has unsupported control mode {control_mode!r}."
+        )
+
+    if not control_event:
+        raise ValueError(
+            f"Task '{task_name}' must declare an 'activate_on' event binding."
+        )
+
+    if control_event not in task["events"]:
+        raise ValueError(
+            f"Task '{task_name}' declares activate_on='{control_event}' but that "
+            "name is not present in the task's event bindings."
+        )
 
 
 def _binding_names(task: dict[str, Any]) -> list[str]:

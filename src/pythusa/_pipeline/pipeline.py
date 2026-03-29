@@ -58,7 +58,9 @@ from ._helpers import (
     ring_spec_for_stream,
     task_spec_for_name,
     topological_task_order,
+    warn_on_shared_event_fanout,
 )
+from ._task_wrappers import _TaskRegistrationAPI
 from ._toml_io import (
     read_pipeline_toml,
     render_pipeline_toml,
@@ -79,6 +81,7 @@ class Pipeline:
         self._closed = False
         self._task_order: tuple[str, ...] = ()
         self._task_start_order: tuple[str, ...] = ()
+        self.add_task = _TaskRegistrationAPI(self)
 
     def add_stream(
         self,
@@ -104,7 +107,7 @@ class Pipeline:
         )
         return self
 
-    def add_task(
+    def _add_task(
         self,
         name: str,
         *,
@@ -113,8 +116,16 @@ class Pipeline:
         writes: dict[str, str] | None = None,
         events: dict[str, str] | None = None,
         description: str | None = None,
+        control_mode: str | None = None,
+        control_event: str | None = None,
     ) -> "Pipeline":
         self._ensure_open()
+        task_events = dict(events or {})
+        if control_mode is not None and control_event not in task_events:
+            raise ValueError(
+                f"Task '{name}' declares activate_on='{control_event}' but that "
+                "name is not present in the task's event bindings."
+            )
         self._register_unique(
             store=self._tasks,
             kind="Task",
@@ -124,8 +135,10 @@ class Pipeline:
                 "fn": fn,
                 "reads": dict(reads or {}),
                 "writes": dict(writes or {}),
-                "events": dict(events or {}),
+                "events": task_events,
                 "description": description,
+                "control_mode": control_mode,
+                "control_event": control_event,
             },
         )
         return self
@@ -155,6 +168,7 @@ class Pipeline:
         if self._compiled:
             raise RuntimeError("Pipeline has already been compiled.")
 
+        warn_on_shared_event_fanout(self._tasks, self._events)
         stream_writers, stream_readers = build_stream_topology(
             self._tasks,
             self._streams,
@@ -249,9 +263,37 @@ class Pipeline:
 
         for task in data.get("tasks", []):
             require_keys(task, "task", "name", "function_module", "function_qualname")
+            task_fn = resolve_callable(task["function_module"], task["function_qualname"])
+            control_mode = task.get("control_mode")
+            control_event = task.get("control_event")
+
+            if control_mode == "switchable":
+                pipe.add_task.switchable(
+                    task["name"],
+                    activate_on=control_event,
+                    fn=task_fn,
+                    reads=dict(task.get("reads", {})),
+                    writes=dict(task.get("writes", {})),
+                    events=dict(task.get("events", {})),
+                    description=task.get("description"),
+                )
+                continue
+
+            if control_mode == "toggleable":
+                pipe.add_task.toggleable(
+                    task["name"],
+                    activate_on=control_event,
+                    fn=task_fn,
+                    reads=dict(task.get("reads", {})),
+                    writes=dict(task.get("writes", {})),
+                    events=dict(task.get("events", {})),
+                    description=task.get("description"),
+                )
+                continue
+
             pipe.add_task(
                 task["name"],
-                fn=resolve_callable(task["function_module"], task["function_qualname"]),
+                fn=task_fn,
                 reads=dict(task.get("reads", {})),
                 writes=dict(task.get("writes", {})),
                 events=dict(task.get("events", {})),
@@ -309,11 +351,21 @@ class Pipeline:
 
     def _register_tasks_with_manager(self) -> None:
         for task_name in self._task_order:
-            self._manager.create_task(task_spec_for_name(task_name, self._tasks[task_name]))
+            self._manager.create_task(
+                task_spec_for_name(
+                    task_name,
+                    self._tasks[task_name],
+                    self._streams,
+                )
+            )
 
     def _ensure_open(self) -> None:
         if self._closed:
             raise RuntimeError("Pipeline is closed.")
+
+
+
+    
 
 
 __all__ = ["Pipeline"]

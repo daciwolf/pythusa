@@ -1,4 +1,5 @@
 import unittest
+import warnings
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
@@ -123,6 +124,41 @@ class PipelineCompileTests(unittest.TestCase):
         with self.assertRaisesRegex(KeyError, "unknown event"):
             pipe.compile()
 
+    def test_compile_warns_when_event_is_shared_across_more_than_two_tasks(self):
+        pipe = Pipeline("radar")
+
+        try:
+            pipe.add_stream("samples", shape=(4,), dtype=np.float32)
+            pipe.add_event("shutdown")
+            pipe.add_task(
+                "acquire",
+                fn=_source_with_shutdown,
+                writes={"samples": "samples"},
+                events={"shutdown": "shutdown"},
+            )
+            pipe.add_task(
+                "worker_a",
+                fn=_sample_reader_with_shutdown,
+                reads={"samples": "samples"},
+                events={"shutdown": "shutdown"},
+            )
+            pipe.add_task(
+                "worker_b",
+                fn=_sample_reader_with_shutdown,
+                reads={"samples": "samples"},
+                events={"shutdown": "shutdown"},
+            )
+
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                pipe.compile()
+
+            self.assertTrue(
+                any("one producer/one consumer" in str(w.message) for w in caught)
+            )
+        finally:
+            pipe._manager.close()
+
     def test_compile_rejects_stream_without_writer(self):
         pipe = Pipeline("radar")
         pipe.add_stream("samples", shape=(4,), dtype=np.float32)
@@ -174,6 +210,16 @@ class PipelineCompileTests(unittest.TestCase):
             self.assertEqual(task_spec.args[1], {"samples": "raw_adc"})
             self.assertEqual(task_spec.args[2], {"fft": "spectra"})
             self.assertEqual(task_spec.args[3], {"shutdown": "halt"})
+            self.assertIsNone(task_spec.args[4])
+            self.assertIsNone(task_spec.args[5])
+            self.assertEqual(
+                task_spec.args[6],
+                {"samples": {"name": "raw_adc", "shape": (4,), "dtype": np.float32}},
+            )
+            self.assertEqual(
+                task_spec.args[7],
+                {"fft": {"name": "spectra", "shape": (4,), "dtype": np.complex64}},
+            )
             self.assertEqual(task_spec.reading_rings, ("raw_adc",))
             self.assertEqual(task_spec.writing_rings, ("spectra",))
             self.assertEqual(task_spec.events, ("halt",))
@@ -193,6 +239,45 @@ class PipelineCompileTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "already registered"):
             pipe.add_task("acquire", fn=_task_fn)
+
+    def test_add_task_supports_decorator_registration(self):
+        pipe = Pipeline("radar")
+
+        @pipe.add_task("acquire", writes={"samples": "samples"})
+        def acquire(samples) -> None:
+            return None
+
+        self.assertIs(pipe._tasks["acquire"]["fn"], acquire)
+        self.assertEqual(pipe._tasks["acquire"]["writes"], {"samples": "samples"})
+        self.assertIsNone(pipe._tasks["acquire"]["control_mode"])
+        self.assertIsNone(pipe._tasks["acquire"]["control_event"])
+
+    def test_add_task_toggleable_registers_control_metadata(self):
+        pipe = Pipeline("radar")
+
+        returned = pipe.add_task.toggleable(
+            "acquire",
+            activate_on="shutdown",
+            fn=_source_with_shutdown,
+            writes={"samples": "samples"},
+            events={"shutdown": "shutdown"},
+        )
+
+        self.assertIs(returned, pipe)
+        self.assertEqual(pipe._tasks["acquire"]["control_mode"], "toggleable")
+        self.assertEqual(pipe._tasks["acquire"]["control_event"], "shutdown")
+
+    def test_add_task_switchable_requires_activate_on_event_binding(self):
+        pipe = Pipeline("radar")
+
+        with self.assertRaisesRegex(ValueError, "activate_on='shutdown'"):
+            pipe.add_task.switchable(
+                "worker",
+                activate_on="shutdown",
+                fn=_sample_reader,
+                reads={"samples": "samples"},
+                events={"halt": "shutdown"},
+            )
 
     def test_add_event_rejects_duplicate_names(self):
         pipe = Pipeline("radar")
@@ -364,7 +449,7 @@ class PipelineCompileTests(unittest.TestCase):
 
         self.assertIn("format_version = 1", text)
         self.assertIn('name = "radar"', text)
-        self.assertIn('function_module = "tests.test_pipeline_compile"', text)
+        self.assertIn(f'function_module = "{_task_fn.__module__}"', text)
         self.assertIn('function_qualname = "_task_fn"', text)
         self.assertEqual(restored.name, "radar")
         self.assertEqual(restored._streams["samples"]["shape"], (4,))
@@ -400,6 +485,28 @@ class PipelineCompileTests(unittest.TestCase):
             path = Path(tmpdir) / "pipeline.toml"
             with self.assertRaisesRegex(ValueError, "importable top-level callables"):
                 pipe.save(path)
+
+    def test_save_and_reconstruct_preserve_task_control_metadata(self):
+        pipe = Pipeline("radar")
+        pipe.add_stream("samples", shape=(4,), dtype=np.float32)
+        pipe.add_event("shutdown")
+        pipe.add_task.toggleable(
+            "acquire",
+            activate_on="shutdown",
+            fn=_source_with_shutdown,
+            writes={"samples": "samples"},
+            events={"shutdown": "shutdown"},
+        )
+
+        with TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "pipeline.toml"
+            text = pipe.save(path).read_text(encoding="utf-8")
+            restored = Pipeline.reconstruct(path)
+
+        self.assertIn('control_mode = "toggleable"', text)
+        self.assertIn('control_event = "shutdown"', text)
+        self.assertEqual(restored._tasks["acquire"]["control_mode"], "toggleable")
+        self.assertEqual(restored._tasks["acquire"]["control_event"], "shutdown")
 
     def test_save_orders_sections_deterministically(self):
         pipe = Pipeline("radar")
@@ -485,9 +592,9 @@ class PipelineCompileTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "saved task must include"):
                 Pipeline.reconstruct(path)
 
-    def test_binding_adapter_invokes_user_fn_with_keyword_bound_objects(self):
-        reader = object()
-        writer = object()
+    def test_binding_adapter_invokes_user_fn_with_stream_binding_objects(self):
+        reader = _FakeRawReader(np.arange(4, dtype=np.float32))
+        writer = _FakeRawWriter()
         event = object()
         seen: dict[str, object] = {}
 
@@ -502,15 +609,122 @@ class PipelineCompileTests(unittest.TestCase):
                         {"samples": "raw_adc"},
                         {"fft": "spectra"},
                         {"shutdown": "halt"},
+                        None,
+                        None,
+                        {"samples": {"name": "raw_adc", "shape": (4,), "dtype": np.float32}},
+                        {"fft": {"name": "spectra", "shape": (4,), "dtype": np.complex64}},
                     )
 
-        self.assertEqual(
-            seen,
-            {"samples": reader, "fft": writer, "shutdown": event},
-        )
+        self.assertIs(seen["samples"].raw, reader)
+        self.assertIs(seen["fft"].raw, writer)
+        self.assertIs(seen["shutdown"], event)
         get_reader_mock.assert_called_once_with("raw_adc")
         get_writer_mock.assert_called_once_with("spectra")
         get_event_mock.assert_called_once_with("halt")
+
+    def test_stream_reader_read_returns_shaped_array_and_writer_write_validates_frame(self):
+        reader = _FakeRawReader(np.arange(4, dtype=np.float32))
+        writer = _FakeRawWriter()
+        captured: dict[str, object] = {}
+
+        def task_fn(*, samples, fft) -> None:
+            frame = samples.read()
+            captured["frame"] = frame
+            captured["write_ok"] = fft.write(np.ones(4, dtype=np.complex64))
+            captured["reader_raw"] = samples.raw
+            captured["writer_raw"] = fft.raw
+
+        with patch("pythusa._pipeline._helpers.get_reader", return_value=reader):
+            with patch("pythusa._pipeline._helpers.get_writer", return_value=writer):
+                _invoke_task_with_bindings(
+                    task_fn,
+                    {"samples": "raw_adc"},
+                    {"fft": "spectra"},
+                    {},
+                    None,
+                    None,
+                    {"samples": {"name": "raw_adc", "shape": (2, 2), "dtype": np.float32}},
+                    {"fft": {"name": "spectra", "shape": (4,), "dtype": np.complex64}},
+                )
+
+        self.assertTrue(np.array_equal(captured["frame"], np.arange(4, dtype=np.float32).reshape(2, 2)))
+        self.assertTrue(captured["write_ok"])
+        self.assertIs(captured["reader_raw"], reader)
+        self.assertIs(captured["writer_raw"], writer)
+        self.assertEqual(writer.last_written.shape, (4,))
+        self.assertEqual(writer.last_written.dtype, np.complex64)
+
+    def test_stream_reader_set_blocking_toggles_reader_participation(self):
+        reader = _FakeRawReader(np.arange(4, dtype=np.float32))
+        captured: dict[str, object] = {}
+
+        def task_fn(*, samples) -> None:
+            samples.set_blocking(False)
+            captured["inactive"] = samples.is_blocking()
+            samples.set_blocking(True)
+            captured["active"] = samples.is_blocking()
+
+        with patch("pythusa._pipeline._helpers.get_reader", return_value=reader):
+            _invoke_task_with_bindings(
+                task_fn,
+                {"samples": "raw_adc"},
+                {},
+                {},
+                None,
+                None,
+                {"samples": {"name": "raw_adc", "shape": (4,), "dtype": np.float32}},
+                {},
+            )
+
+        self.assertFalse(captured["inactive"])
+        self.assertTrue(captured["active"])
+        self.assertEqual(reader.calls, ["set_reader_active:False", "jump_to_writer", "set_reader_active:True"])
+
+    def test_binding_adapter_runs_toggleable_tasks_with_wait_reset_then_fn(self):
+        event = _FakeToggleEvent()
+        calls: list[str] = []
+
+        def task_fn(*, shutdown) -> None:
+            calls.append("fn")
+            if len(calls) == 2:
+                raise _StopLoop
+
+        with patch("pythusa._pipeline._helpers.get_event", return_value=event):
+            with self.assertRaises(_StopLoop):
+                _invoke_task_with_bindings(
+                    task_fn,
+                    {},
+                    {},
+                    {"shutdown": "halt"},
+                    "toggleable",
+                    "shutdown",
+                )
+
+        self.assertEqual(calls, ["fn", "fn"])
+        self.assertEqual(event.calls, ["wait", "reset", "wait", "reset"])
+
+    def test_binding_adapter_runs_switchable_tasks_with_wait_then_fn(self):
+        event = _FakeSwitchEvent()
+        calls: list[str] = []
+
+        def task_fn(*, shutdown) -> None:
+            calls.append("fn")
+            if len(calls) == 2:
+                raise _StopLoop
+
+        with patch("pythusa._pipeline._helpers.get_event", return_value=event):
+            with self.assertRaises(_StopLoop):
+                _invoke_task_with_bindings(
+                    task_fn,
+                    {},
+                    {},
+                    {"shutdown": "halt"},
+                    "switchable",
+                    "shutdown",
+                )
+
+        self.assertEqual(calls, ["fn", "fn"])
+        self.assertEqual(event.calls, ["wait", "wait"])
 
     def test_compile_rejects_duplicate_local_binding_names(self):
         pipe = Pipeline("radar")
@@ -640,6 +854,10 @@ def _sample_reader(samples) -> None:
     return None
 
 
+def _sample_reader_with_shutdown(samples, shutdown) -> None:
+    return None
+
+
 def _cycle_task_a(b_in, a_out) -> None:
     return None
 
@@ -666,6 +884,74 @@ def _bytes_source(payload) -> None:
 
 def _bytes_sink(payload) -> None:
     return None
+
+
+class _StopLoop(Exception):
+    pass
+
+
+class _FakeToggleEvent:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def wait(self, timeout=None) -> bool:
+        _ = timeout
+        self.calls.append("wait")
+        return True
+
+    def reset(self) -> None:
+        self.calls.append("reset")
+
+
+class _FakeSwitchEvent:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def wait(self, timeout=None) -> bool:
+        _ = timeout
+        self.calls.append("wait")
+        return True
+
+
+class _FakeRawReader:
+    def __init__(self, array):
+        self._array = np.asarray(array)
+        self.calls: list[str] = []
+        self._active = True
+
+    def read_array(self, nbytes, dtype):
+        _ = nbytes
+        _ = dtype
+        return self._array.copy()
+
+    def expose_reader_mem_view(self, nbytes):
+        _ = nbytes
+        raise AssertionError("read_into path is not exercised in this test")
+
+    def simple_read(self, *_args, **_kwargs):
+        raise AssertionError("read_into path is not exercised in this test")
+
+    def inc_reader_pos(self, *_args, **_kwargs):
+        raise AssertionError("read_into path is not exercised in this test")
+
+    def set_reader_active(self, active: bool) -> None:
+        self.calls.append(f"set_reader_active:{active}")
+        self._active = active
+
+    def is_reader_active(self) -> bool:
+        return self._active
+
+    def jump_to_writer(self) -> None:
+        self.calls.append("jump_to_writer")
+
+
+class _FakeRawWriter:
+    def __init__(self) -> None:
+        self.last_written = None
+
+    def write_array(self, array) -> int:
+        self.last_written = np.asarray(array).copy()
+        return int(self.last_written.nbytes)
 
 
 if __name__ == "__main__":

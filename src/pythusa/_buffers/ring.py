@@ -183,12 +183,12 @@ class SharedRingBuffer(shared_memory.SharedMemory):
 
     def __enter__(self) -> "SharedRingBuffer":
         if self.reader != self._NO_READER:
-            self.header[self.reader_pos_index + 1] = 1  # mark reader alive
+            self.set_reader_active(True)
         return self
 
     def __exit__(self, *_):
         if self.reader != self._NO_READER:
-            self.header[self.reader_pos_index + 1] = 0  # mark reader dead before closing
+            self.set_reader_active(False)
         self.close()
         if self._is_creator:
             try:
@@ -227,6 +227,15 @@ class SharedRingBuffer(shared_memory.SharedMemory):
         self.header[self.reader_pos_index] = new_reader_pos
         self.reader_pos = new_reader_pos
         self._reader_positions_dirty = True
+
+    def set_reader_active(self, active: bool) -> None:
+        self._assert_is_reader("set_reader_active")
+        self.header[self.reader_pos_index + 1] = 1 if active else 0
+        self._reader_positions_dirty = True
+
+    def is_reader_active(self) -> bool:
+        self._assert_is_reader("is_reader_active")
+        return bool(self.header[self.reader_pos_index + 1])
 
     def update_write_pos(self, new_writer_pos: int) -> None:
         self.header[self.write_pos_index] = new_writer_pos

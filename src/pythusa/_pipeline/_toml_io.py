@@ -121,6 +121,10 @@ def _append_task_table(lines: list[str], task: dict[str, Any]) -> None:
     lines.append(f'function_qualname = {_toml_string(qualname)}')
     if task["description"] is not None:
         lines.append(f'description = {_toml_string(task["description"])}')
+    if task.get("control_mode") is not None:
+        lines.append(f'control_mode = {_toml_string(task["control_mode"])}')
+    if task.get("control_event") is not None:
+        lines.append(f'control_event = {_toml_string(task["control_event"])}')
     _append_toml_mapping(lines, "tasks.reads", task["reads"])
     _append_toml_mapping(lines, "tasks.writes", task["writes"])
     _append_toml_mapping(lines, "tasks.events", task["events"])

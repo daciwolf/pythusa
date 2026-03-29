@@ -169,6 +169,17 @@ class SharedRingBufferBasicTests(unittest.TestCase):
         self.assertEqual(writable, 17)  # used = 20-5 = 15, free = 32-15 = 17
         self.assertEqual(int(ring.header[ring.max_amount_writable_index]), 17)
 
+    def test_set_reader_active_controls_liveness_slot(self):
+        ring = self._make_ring(size=32, num_readers=1, reader=0)
+
+        ring.set_reader_active(True)
+        self.assertTrue(ring.is_reader_active())
+        self.assertEqual(int(ring.header[ring.reader_pos_index + 1]), 1)
+
+        ring.set_reader_active(False)
+        self.assertFalse(ring.is_reader_active())
+        self.assertEqual(int(ring.header[ring.reader_pos_index + 1]), 0)
+
     def test_expose_writer_mem_view_contiguous(self):
         ring = self._make_ring(size=32, num_readers=1, reader=0)
 
