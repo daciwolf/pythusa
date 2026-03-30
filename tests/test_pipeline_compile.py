@@ -8,11 +8,13 @@ try:
     import numpy as np
     from pythusa import Pipeline, ProcessMetrics
     from pythusa._pipeline._helpers import _invoke_task_with_bindings
+    from pythusa._pipeline._stream_io import make_reader_binding
 except ModuleNotFoundError:  # pragma: no cover - environment dependency
     np = None
     Pipeline = None
     ProcessMetrics = None
     _invoke_task_with_bindings = None
+    make_reader_binding = None
 
 
 @unittest.skipIf(Pipeline is None, "pipeline dependencies are required")
@@ -732,6 +734,20 @@ class PipelineCompileTests(unittest.TestCase):
         self.assertTrue(captured["active"])
         self.assertEqual(reader.calls, ["set_reader_active:False", "jump_to_writer", "set_reader_active:True"])
 
+    def test_stream_reader_read_returns_owned_array(self):
+        raw = _StickyRawReader(np.arange(4, dtype=np.float32))
+        reader = make_reader_binding(
+            raw,
+            name="samples",
+            shape=(2, 2),
+            dtype=np.float32,
+        )
+
+        frame = reader.read()
+        frame[0, 0] = 999.0
+
+        self.assertEqual(raw._array[0], 0.0)
+
     def test_binding_adapter_runs_toggleable_tasks_with_wait_reset_then_fn(self):
         event = _FakeToggleEvent()
         calls: list[str] = []
@@ -1025,6 +1041,16 @@ class _FakeRawWriter:
     def write_array(self, array) -> int:
         self.last_written = np.asarray(array).copy()
         return int(self.last_written.nbytes)
+
+
+class _StickyRawReader:
+    def __init__(self, array):
+        self._array = np.asarray(array)
+
+    def read_array(self, nbytes, dtype):
+        _ = nbytes
+        _ = dtype
+        return self._array
 
 
 if __name__ == "__main__":

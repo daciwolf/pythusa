@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Task registration helpers and controlled-task run loops."""
+
 from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
@@ -11,19 +13,7 @@ _TaskDecorator = Callable[[_TaskFn], _TaskFn]
 
 
 class _TaskRegistrationAPI:
-    """
-    Callable task-registration helper exposed as `pipe.add_task`.
-
-    Supported styles:
-
-    - direct registration:
-      `pipe.add_task("worker", fn=worker, reads=..., writes=...)`
-    - decorator registration:
-      `@pipe.add_task("worker", reads=..., writes=...)`
-    - switch/toggle controlled registration:
-      `pipe.add_task.switchable(...)`
-      `pipe.add_task.toggleable(...)`
-    """
+    """Callable task-registration helper exposed as ``pipe.add_task``."""
 
     def __init__(self, pipeline: "Pipeline") -> None:
         self._pipeline = pipeline
@@ -163,11 +153,12 @@ def run_controlled_task(
     activate_on: str | None,
     kwargs: dict[str, Any],
 ) -> Any:
+    """Run a task directly or under a switch/toggle control loop."""
     if control_mode is None:
         return fn(**kwargs)
 
     event = _activation_event(kwargs, activate_on)
-    fn_kwargs = _task_kwargs(kwargs, activate_on)
+    fn_kwargs = _controlled_call_kwargs(kwargs, activate_on)
 
     if control_mode == "toggleable":
         while True:
@@ -198,7 +189,7 @@ def _activation_event(
         ) from exc
 
 
-def _task_kwargs(
+def _controlled_call_kwargs(
     kwargs: dict[str, Any],
     activate_on: str | None,
 ) -> dict[str, Any]:

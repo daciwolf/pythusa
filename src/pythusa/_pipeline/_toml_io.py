@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""TOML serialization helpers for persisted pipeline declarations."""
+
 import importlib
 from pathlib import Path
 import tomllib

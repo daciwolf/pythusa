@@ -1,47 +1,7 @@
 from __future__ import annotations
 
 """
-Minimal public pipeline scaffold.
-
-Approved target workflow:
-
-```python
-pipe = pythusa.Pipeline("radar")
-
-pipe.add_stream("samples", shape=(4096,), dtype=np.float32)
-pipe.add_stream("fft", shape=(2049,), dtype=np.complex64)
-
-pipe.add_task(
-    "acquire",
-    fn=acquire,
-    writes={"samples": "samples"},
-)
-
-pipe.add_task(
-    "fft_worker_1",
-    fn=fft_worker,
-    reads={"samples": "samples"},
-    writes={"fft": "fft"},
-)
-
-pipe.add_task(
-    "db_writer",
-    fn=store_fft,
-    reads={"fft": "fft"},
-)
-```
-
-Important invariants for the eventual implementation:
-
-- the public API stays centered on `Pipeline`, `add_stream()`, and `add_task()`
-- each stream compiles to one low-level ring
-- each ring has exactly one writer and zero or more readers
-- fan-out is native
-- fan-in happens at the task level by reading from multiple streams
-- events remain first-class because the low-level runtime already supports them
-
-This file is intentionally a scaffold. It documents the shape we agreed on
-without implementing behavior yet.
+Public pipeline API.
 """
 
 from pathlib import Path
@@ -52,7 +12,6 @@ import numpy as np
 from .._sync.events import EventSpec
 from .._workers.manager import Manager, ProcessMetrics
 from ._helpers import (
-    _invoke_task_with_bindings,
     build_stream_topology,
     build_task_graph,
     ring_spec_for_stream,
@@ -70,6 +29,8 @@ from ._toml_io import (
 
 
 class Pipeline:
+    """Public DAG builder and lifecycle owner for a compiled runtime pipeline."""
+
     def __init__(self, name: str) -> None:
         self.name = name
         self._manager: Manager = Manager()
@@ -381,10 +342,5 @@ class Pipeline:
     def _ensure_open(self) -> None:
         if self._closed:
             raise RuntimeError("Pipeline is closed.")
-
-
-
-    
-
 
 __all__ = ["Pipeline"]

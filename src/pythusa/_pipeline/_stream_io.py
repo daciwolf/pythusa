@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Thin framed-array helpers layered on top of raw shared-memory rings."""
+
 from dataclasses import dataclass
 from typing import Any
 
@@ -41,7 +43,7 @@ class StreamReader:
         array = self.raw.read_array(self.frame_nbytes, dtype=self.dtype)
         if array.size != self.frame_size:
             return None
-        return array.reshape(self.shape)
+        return np.array(array, copy=True).reshape(self.shape)
 
     def read_into(self, out: np.ndarray) -> bool:
         array = _require_frame_array(out, shape=self.shape, dtype=self.dtype)
@@ -110,6 +112,7 @@ def _binding_spec(
     shape: tuple[int, ...],
     dtype: Any,
 ) -> _StreamBindingSpec:
+    """Normalize binding metadata into one immutable stream spec."""
     return _StreamBindingSpec(
         name=name,
         shape=tuple(shape),
@@ -123,6 +126,7 @@ def _require_frame_array(
     shape: tuple[int, ...],
     dtype: np.dtype,
 ) -> np.ndarray:
+    """Validate one frame for shape, dtype, and contiguous layout."""
     frame = np.asarray(array)
     if tuple(frame.shape) != tuple(shape):
         raise ValueError(

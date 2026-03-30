@@ -11,3 +11,4 @@ nav:
   - Home: index.md
   - Pipeline API: pipeline.md
   - Runtime: runtime.md
+  - Benchmarks: benchmarks.md

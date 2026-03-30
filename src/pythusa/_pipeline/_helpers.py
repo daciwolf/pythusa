@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import inspect
+import warnings
 from graphlib import CycleError, TopologicalSorter
 from typing import Any, Callable
-import warnings
 
 from .._buffers.ring import RingSpec
 from .._core.context import get_event, get_reader, get_writer
@@ -14,7 +14,7 @@ from ._stream_io import make_reader_binding, make_writer_binding
 from ._task_wrappers import run_controlled_task
 
 _DEFAULT_RING_DEPTH = 32
-_DEFAULT_CACHE_SIZE = 64
+_CACHE_ALIGNMENT_BYTES = 64
 
 
 def build_stream_topology(
@@ -93,7 +93,7 @@ def topological_task_order(task_graph: dict[str, set[str]]) -> tuple[str, ...]:
 def ring_spec_for_stream(stream: dict[str, Any], *, reader_count: int) -> RingSpec:
     ring_size = bytes_for_shape(stream["shape"], stream["dtype"]) * _DEFAULT_RING_DEPTH
     if stream["cache_align"]:
-        ring_size = align_size(ring_size, _DEFAULT_CACHE_SIZE)
+        ring_size = align_size(ring_size, _CACHE_ALIGNMENT_BYTES)
 
     return RingSpec(
         name=stream["name"],
