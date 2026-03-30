@@ -195,9 +195,9 @@ def _run_configuration(
     )
 
     with pythusa.Pipeline(f"rfft-{sample_rate_hz}-{frame_length}-{worker_count}") as pipe:
-        run_prefix = f"rfft_{uuid.uuid4().hex[:10]}"
-        source_frames_name = f"{run_prefix}_source_frames"
-        source_meta_name = f"{run_prefix}_source_meta"
+        run_prefix = f"r{uuid.uuid4().hex[:6]}"
+        source_frames_name = f"{run_prefix}_sf"
+        source_meta_name = f"{run_prefix}_sm"
         pipe.add_stream(source_frames_name, shape=(frame_length,), dtype=np.float32, cache_align=False)
         pipe.add_stream(source_meta_name, shape=(META_FIELDS,), dtype=np.float64, cache_align=False)
 
@@ -205,10 +205,10 @@ def _run_configuration(
         aggregator_reads: dict[str, str] = {}
 
         for worker_index in range(worker_count):
-            worker_frame_name = f"{run_prefix}_worker_{worker_index}_frames"
-            worker_meta_name = f"{run_prefix}_worker_{worker_index}_meta"
-            result_frame_name = f"{run_prefix}_result_{worker_index}_frames"
-            result_meta_name = f"{run_prefix}_result_{worker_index}_meta"
+            worker_frame_name = f"{run_prefix}_w{worker_index}f"
+            worker_meta_name = f"{run_prefix}_w{worker_index}m"
+            result_frame_name = f"{run_prefix}_r{worker_index}f"
+            result_meta_name = f"{run_prefix}_r{worker_index}m"
 
             pipe.add_stream(worker_frame_name, shape=(frame_length,), dtype=np.float32, cache_align=False)
             pipe.add_stream(worker_meta_name, shape=(META_FIELDS,), dtype=np.float64, cache_align=False)
@@ -244,10 +244,10 @@ def _run_configuration(
         )
 
         for worker_index in range(worker_count):
-            worker_frame_name = f"{run_prefix}_worker_{worker_index}_frames"
-            worker_meta_name = f"{run_prefix}_worker_{worker_index}_meta"
-            result_frame_name = f"{run_prefix}_result_{worker_index}_frames"
-            result_meta_name = f"{run_prefix}_result_{worker_index}_meta"
+            worker_frame_name = f"{run_prefix}_w{worker_index}f"
+            worker_meta_name = f"{run_prefix}_w{worker_index}m"
+            result_frame_name = f"{run_prefix}_r{worker_index}f"
+            result_meta_name = f"{run_prefix}_r{worker_index}m"
             pipe.add_task(
                 f"rfft_{worker_index}",
                 fn=partial(
