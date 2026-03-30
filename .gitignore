@@ -5,6 +5,7 @@ __pycache__/
 .pytest_cache/
 .coverage
 .venv/
+pkg_tests/.venv/
 benchmarks/results/
 build/
 dist/
