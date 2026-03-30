@@ -8,6 +8,13 @@ PYTHUSA is built around typed streams of fixed-shape NumPy frames. You declare a
 
 PYTHUSA started as backend infrastructure for DSP processing work on the UCI Rocket Project Liquids team and was later extracted into its own library once the shared-memory runtime proved useful more broadly.
 
+## Documentation
+
+- [Docs Home](https://daciwolf.github.io/pythusa/)
+- [Pipeline API](https://daciwolf.github.io/pythusa/pipeline/)
+- [Runtime](https://daciwolf.github.io/pythusa/runtime/)
+- [Benchmarks](https://daciwolf.github.io/pythusa/benchmarks/)
+
 ![PYTHUSA simple dataflow](docs/assets/simple-dataflow.svg)
 
 ## How It Works
