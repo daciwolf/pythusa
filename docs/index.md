@@ -68,21 +68,28 @@ def sink(doubled) -> None:
         return
 
 
-with pythusa.Pipeline("demo") as pipe:
-    pipe.add_stream("samples", shape=(8,), dtype=np.float32)
-    pipe.add_stream("doubled", shape=(8,), dtype=np.float32)
+def main() -> None:
+    with pythusa.Pipeline("demo") as pipe:
+        pipe.add_stream("samples", shape=(8,), dtype=np.float32)
+        pipe.add_stream("doubled", shape=(8,), dtype=np.float32)
 
-    pipe.add_task("source", fn=source, writes={"samples": "samples"})
-    pipe.add_task(
-        "scale",
-        fn=scale,
-        reads={"samples": "samples"},
-        writes={"doubled": "doubled"},
-    )
-    pipe.add_task("sink", fn=sink, reads={"doubled": "doubled"})
+        pipe.add_task("source", fn=source, writes={"samples": "samples"})
+        pipe.add_task(
+            "scale",
+            fn=scale,
+            reads={"samples": "samples"},
+            writes={"doubled": "doubled"},
+        )
+        pipe.add_task("sink", fn=sink, reads={"doubled": "doubled"})
 
-    pipe.run()
+        pipe.run()
+
+
+if __name__ == "__main__":
+    main()
 ```
+
+On Windows and other `spawn`-based multiprocessing environments, keep `pipe.start()` and `pipe.run()` inside a `main()` guarded by `if __name__ == "__main__":`.
 
 ## Core Ideas
 
@@ -111,7 +118,23 @@ Use them when a task should react to a signal instead of running unconditionally
 
 PYTHUSA currently targets Python 3.12 only.
 
-### macOS / Linux
+### Install From PyPI
+
+```bash
+python -m pip install pythusa
+```
+
+Optional extras from PyPI:
+
+```bash
+python -m pip install "pythusa[test]"
+python -m pip install "pythusa[examples]"
+python -m pip install "pythusa[benchmarks]"
+```
+
+### Install From Source
+
+#### macOS / Linux
 
 ```bash
 python3.12 -m venv .venv
@@ -119,7 +142,7 @@ source .venv/bin/activate
 python -m pip install -e .
 ```
 
-### Windows PowerShell
+#### Windows PowerShell
 
 ```powershell
 py -3.12 -m venv .venv

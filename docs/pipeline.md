@@ -80,20 +80,25 @@ def sink(doubled) -> None:
         return
 
 
-with pythusa.Pipeline("demo") as pipe:
-    pipe.add_stream("samples", shape=(8,), dtype=np.float32)
-    pipe.add_stream("doubled", shape=(8,), dtype=np.float32)
+def main() -> None:
+    with pythusa.Pipeline("demo") as pipe:
+        pipe.add_stream("samples", shape=(8,), dtype=np.float32)
+        pipe.add_stream("doubled", shape=(8,), dtype=np.float32)
 
-    pipe.add_task("source", fn=source, writes={"samples": "samples"})
-    pipe.add_task(
-        "scale",
-        fn=scale,
-        reads={"samples": "samples"},
-        writes={"doubled": "doubled"},
-    )
-    pipe.add_task("sink", fn=sink, reads={"doubled": "doubled"})
+        pipe.add_task("source", fn=source, writes={"samples": "samples"})
+        pipe.add_task(
+            "scale",
+            fn=scale,
+            reads={"samples": "samples"},
+            writes={"doubled": "doubled"},
+        )
+        pipe.add_task("sink", fn=sink, reads={"doubled": "doubled"})
 
-    pipe.run()
+        pipe.run()
+
+
+if __name__ == "__main__":
+    main()
 ```
 
 This is a three-machine line:
@@ -101,6 +106,8 @@ This is a three-machine line:
 - `source` publishes frames
 - `scale` transforms them
 - `sink` consumes the result
+
+On Windows and other `spawn`-based multiprocessing environments, `pipe.start()` and `pipe.run()` must live behind an `if __name__ == "__main__":` guard or the child process will re-import the module and try to create the same shared-memory rings again. This does not change pipeline semantics on Linux or macOS; it is simply the correct portable `multiprocessing` pattern for standalone scripts.
 
 ## Creating A Pipeline
 

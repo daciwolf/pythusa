@@ -246,33 +246,38 @@ def sink() -> None:
         return
 
 
-with pythusa.Manager() as manager:
-    manager.create_ring(
-        pythusa.RingSpec(
-            name="samples",
-            size=FRAME_NBYTES * 32,
-            num_readers=1,
+def main() -> None:
+    with pythusa.Manager() as manager:
+        manager.create_ring(
+            pythusa.RingSpec(
+                name="samples",
+                size=FRAME_NBYTES * 32,
+                num_readers=1,
+            )
         )
-    )
 
-    manager.create_task(
-        pythusa.TaskSpec(
-            name="source",
-            fn=source,
-            writing_rings=("samples",),
+        manager.create_task(
+            pythusa.TaskSpec(
+                name="source",
+                fn=source,
+                writing_rings=("samples",),
+            )
         )
-    )
-    manager.create_task(
-        pythusa.TaskSpec(
-            name="sink",
-            fn=sink,
-            reading_rings=("samples",),
+        manager.create_task(
+            pythusa.TaskSpec(
+                name="sink",
+                fn=sink,
+                reading_rings=("samples",),
+            )
         )
-    )
 
-    manager.start("sink")
-    manager.start("source")
-    manager.join_all()
+        manager.start("sink")
+        manager.start("source")
+        manager.join_all()
+
+
+if __name__ == "__main__":
+    main()
 ```
 
 Notes:
@@ -280,6 +285,7 @@ Notes:
 - the ring size is declared in bytes
 - the sink is started before the source so the reader is alive first
 - `read_array(...)` and `write_array(...)` are raw byte-oriented helpers
+- on Windows and other `spawn`-based environments, the `main()` guard is required for the same reason as the pipeline examples: child processes re-import the script module during startup
 
 ## Raw Ring API
 

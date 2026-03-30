@@ -37,7 +37,23 @@ If a task should run continuously, the loop belongs inside the task function. If
 
 PYTHUSA currently targets Python 3.12 only.
 
-### macOS / Linux
+### Install From PyPI
+
+```bash
+python -m pip install pythusa
+```
+
+Optional extras from PyPI:
+
+```bash
+python -m pip install "pythusa[test]"
+python -m pip install "pythusa[examples]"
+python -m pip install "pythusa[benchmarks]"
+```
+
+### Install From Source
+
+#### macOS / Linux
 
 ```bash
 python3.12 -m venv .venv
@@ -53,7 +69,7 @@ python -m pip install -e ".[examples]"
 python -m pip install -e ".[benchmarks]"
 ```
 
-### Windows PowerShell
+#### Windows PowerShell
 
 ```powershell
 py -3.12 -m venv .venv
@@ -105,23 +121,30 @@ def sink(doubled) -> None:
         return
 
 
-with pythusa.Pipeline("demo") as pipe:
-    pipe.add_stream("samples", shape=(8,), dtype=np.float32)
-    pipe.add_stream("doubled", shape=(8,), dtype=np.float32)
+def main() -> None:
+    with pythusa.Pipeline("demo") as pipe:
+        pipe.add_stream("samples", shape=(8,), dtype=np.float32)
+        pipe.add_stream("doubled", shape=(8,), dtype=np.float32)
 
-    pipe.add_task("source", fn=source, writes={"samples": "samples"})
-    pipe.add_task(
-        "scale",
-        fn=scale,
-        reads={"samples": "samples"},
-        writes={"doubled": "doubled"},
-    )
-    pipe.add_task("sink", fn=sink, reads={"doubled": "doubled"})
+        pipe.add_task("source", fn=source, writes={"samples": "samples"})
+        pipe.add_task(
+            "scale",
+            fn=scale,
+            reads={"samples": "samples"},
+            writes={"doubled": "doubled"},
+        )
+        pipe.add_task("sink", fn=sink, reads={"doubled": "doubled"})
 
-    pipe.run()
+        pipe.run()
+
+
+if __name__ == "__main__":
+    main()
 ```
 
 In `reads`, `writes`, and `events`, the keys are the task's local parameter names and the values are the registered stream or event names.
+
+On Windows and other `spawn`-based multiprocessing environments, keep `pipe.start()` and `pipe.run()` behind an `if __name__ == "__main__":` guard as shown above. The child process re-imports the script module during startup; without the guard, top-level pipeline construction runs again in the child and tries to recreate the same shared-memory rings. This guard is standard `multiprocessing` practice and is safe on Linux and macOS too.
 
 ## Public API
 
