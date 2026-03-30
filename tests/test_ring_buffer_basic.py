@@ -488,13 +488,19 @@ class SharedRingBufferBasicTests(unittest.TestCase):
         # Current implementation uses min reader <= writer when computing used.
         self.assertEqual(writable, 16)
 
-    def test_reader_expose_invariant_fails_if_unread_exceeds_ring_size(self):
+    def test_reader_expose_stale_reader_jumps_to_writer_when_unread_exceeds_ring_size(self):
         ring = self._make_ring(size=16, num_readers=1, reader=0)
 
         ring.update_reader_pos(0)
         ring.update_write_pos(32)  # impossible if writer obeys max writable
-        with self.assertRaises(AssertionError):
-            ring.expose_reader_mem_view(1)
+        mv1, mv2, n, wrap = ring.expose_reader_mem_view(1)
+
+        self.assertEqual(int(ring.header[ring.reader_pos_index]), 32)
+        self.assertEqual(n, 0)
+        self.assertFalse(wrap)
+        self.assertEqual(len(mv1), 0)
+        self.assertIsNone(mv2)
+        self._release_mvs(mv1, mv2)
 
 
 if __name__ == "__main__":

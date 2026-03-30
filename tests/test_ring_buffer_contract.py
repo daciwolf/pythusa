@@ -400,17 +400,25 @@ class SharedRingBufferContractTests(unittest.TestCase):
         self._release_mem_views(mv1, mv2)
 
     def test_expose_reader_mem_view_asserts_on_impossible_state(self) -> None:
-        cases = [
-            (5, 9, "max_amount_readable < 0"),
-            (32, 0, "max_amount_readable > ring_buffer_size"),
-        ]
-        for write_pos, read_pos, message in cases:
-            with self.subTest(write_pos=write_pos, read_pos=read_pos):
-                pair = self._make_pair(size=16)
-                pair.creator.update_write_pos(write_pos)
-                pair.peer.update_reader_pos(read_pos)
-                with self.assertRaisesRegex(AssertionError, message):
-                    pair.peer.expose_reader_mem_view(1)
+        pair = self._make_pair(size=16)
+        pair.creator.update_write_pos(5)
+        pair.peer.update_reader_pos(9)
+        with self.assertRaisesRegex(AssertionError, "max_amount_readable < 0"):
+            pair.peer.expose_reader_mem_view(1)
+
+    def test_expose_reader_mem_view_stale_reader_jumps_to_writer(self) -> None:
+        pair = self._make_pair(size=16)
+        pair.creator.update_write_pos(32)
+        pair.peer.update_reader_pos(0)
+
+        mv1, mv2, size_readable, wrap_around = pair.peer.expose_reader_mem_view(1)
+
+        self.assertEqual(int(pair.peer.header[pair.peer.reader_pos_index]), 32)
+        self.assertEqual(size_readable, 0)
+        self.assertFalse(wrap_around)
+        self.assertEqual(len(mv1), 0)
+        self.assertIsNone(mv2)
+        self._release_mem_views(mv1, mv2)
 
     def test_simple_write_and_read_roundtrip(self) -> None:
         cases = [

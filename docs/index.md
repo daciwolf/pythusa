@@ -164,6 +164,8 @@ python -m pip install -e ".[benchmarks]"
   Raw `Manager` plus `SharedRingBuffer` usage.
 - `python examples/engine_dsp_pipeline.py`
   Larger `Pipeline` example with plotting, monitoring, and real DSP-style stages.
+- `python examples/fir128_scaling_pipeline.py`
+  Round-robin FIR128 fan-out/fan-in scaling example over engine-data-derived signals.
 
 ## License
 

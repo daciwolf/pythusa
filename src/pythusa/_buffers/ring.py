@@ -361,12 +361,14 @@ class SharedRingBuffer(shared_memory.SharedMemory):
             f"(write_pos={write_pos}, read_pos={read_pos}, "
             f"max_amount_readable={max_amount_readable})"
         )
-        assert max_amount_readable <= self.ring_buffer_size, (
-            f"invariant violation: max_amount_readable > ring_buffer_size "
-            f"(write_pos={write_pos}, read_pos={read_pos}, "
-            f"max_amount_readable={max_amount_readable}, "
-            f"ring_buffer_size={self.ring_buffer_size})"
-        )
+        if max_amount_readable > self.ring_buffer_size:
+            # This reader has fallen behind beyond one full ring, which can
+            # happen for inactive/non-blocking or not-yet-ready readers while
+            # writers continue to advance. Resync to the current writer and
+            # treat the unread history as dropped.
+            self.jump_to_writer()
+            read_pos = int(self.header[self.reader_pos_index])
+            max_amount_readable = 0
         if max_amount_readable >= size:
             size_readable = size
         else:

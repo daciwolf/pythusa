@@ -214,7 +214,7 @@ class SharedRingBufferCaseMatrixTests(unittest.TestCase):
             f"actual(writable={writable})"
         )
 
-    def test_reader_invariant_cases_raise(self):
+    def test_reader_invariant_cases(self):
         # unread < 0
         ring1 = self._make_ring(size=16, num_readers=1, reader=0)
         ring1.update_write_pos(5)
@@ -222,12 +222,18 @@ class SharedRingBufferCaseMatrixTests(unittest.TestCase):
         with self.assertRaises(AssertionError):
             ring1.expose_reader_mem_view(1)
 
-        # unread > size
+        # unread > size -> stale reader resyncs to writer
         ring2 = self._make_ring(size=16, num_readers=1, reader=0)
         ring2.update_write_pos(33)
         ring2.update_reader_pos(0)
-        with self.assertRaises(AssertionError):
-            ring2.expose_reader_mem_view(1)
+        mv1, mv2, n, wrap = ring2.expose_reader_mem_view(1)
+
+        self.assertEqual(int(ring2.header[ring2.reader_pos_index]), 33)
+        self.assertEqual(n, 0)
+        self.assertFalse(wrap)
+        self.assertEqual(len(mv1), 0)
+        self.assertIsNone(mv2)
+        self._release_mvs(mv1, mv2)
 
 
 if __name__ == "__main__":

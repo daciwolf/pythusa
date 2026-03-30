@@ -159,6 +159,7 @@ On Windows and other `spawn`-based multiprocessing environments, keep `pipe.star
 
 - `python examples/basic_workers.py` shows the raw `Manager` plus `SharedRingBuffer` path.
 - `python examples/engine_dsp_pipeline.py` shows a larger `Pipeline` graph with branching streams, monitoring, and plotting. Install `.[examples]` first.
+- `python examples/fir128_scaling_pipeline.py` shows a round-robin FIR128 fan-out/fan-in benchmark over engine-data-derived signals and reports KSPS, latency, and MB/s as worker count scales.
 
 ## Benchmarks
 
