@@ -15,7 +15,7 @@ PYTHUSA started as backend infrastructure for DSP processing work on the UCI Roc
 - [Runtime](https://daciwolf.github.io/pythusa/runtime/)
 - [Benchmarks](https://daciwolf.github.io/pythusa/benchmarks/)
 
-![PYTHUSA simple dataflow](docs/assets/simple-dataflow.svg)
+![PYTHUSA simple dataflow](https://daciwolf.github.io/pythusa/assets/simple-dataflow.svg)
 
 ## How It Works
 
