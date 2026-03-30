@@ -12,3 +12,4 @@ dist/
 *.egg-info/
 AGENTS.md
 .codex/
+.pkg_tests
