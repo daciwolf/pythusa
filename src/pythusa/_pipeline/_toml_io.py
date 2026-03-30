@@ -99,6 +99,7 @@ def _append_stream_table(lines: list[str], stream: dict[str, Any]) -> None:
     lines.append(f'name = {_toml_string(stream["name"])}')
     lines.append(f"shape = {_toml_int_array(stream['shape'])}")
     lines.append(f'dtype = {_toml_string(np.dtype(stream["dtype"]).str)}')
+    lines.append(f"frames = {int(stream['frames'])}")
     lines.append(f"cache_align = {_toml_bool(stream['cache_align'])}")
     if stream["description"] is not None:
         lines.append(f'description = {_toml_string(stream["description"])}')

@@ -8,7 +8,7 @@ try:
     import numpy as np
     from pythusa import Pipeline, ProcessMetrics
     from pythusa._pipeline._helpers import _invoke_task_with_bindings
-    from pythusa._pipeline._stream_io import make_reader_binding
+    from pythusa._pipeline._stream_io import make_reader_binding, make_writer_binding
 except ModuleNotFoundError:  # pragma: no cover - environment dependency
     np = None
     Pipeline = None
@@ -235,6 +235,25 @@ class PipelineCompileTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "already registered"):
             pipe.add_stream("samples", shape=(4,), dtype=np.float32)
+
+    def test_add_stream_stores_configured_frame_count(self):
+        pipe = Pipeline("radar")
+
+        pipe.add_stream("samples", shape=(4,), dtype=np.float32, frames=48)
+
+        self.assertEqual(pipe._streams["samples"]["frames"], 48)
+
+    def test_add_stream_rejects_non_integer_frame_count(self):
+        pipe = Pipeline("radar")
+
+        with self.assertRaisesRegex(TypeError, "frames must be an integer"):
+            pipe.add_stream("samples", shape=(4,), dtype=np.float32, frames=3.5)
+
+    def test_add_stream_rejects_non_positive_frame_count(self):
+        pipe = Pipeline("radar")
+
+        with self.assertRaisesRegex(ValueError, "frames must be >= 1"):
+            pipe.add_stream("samples", shape=(4,), dtype=np.float32, frames=0)
 
     def test_add_task_rejects_duplicate_names(self):
         pipe = Pipeline("radar")
@@ -486,7 +505,7 @@ class PipelineCompileTests(unittest.TestCase):
 
     def test_save_and_reconstruct_round_trip_pipeline_declaration(self):
         pipe = Pipeline("radar")
-        pipe.add_stream("samples", shape=(4,), dtype=np.float32, cache_align=False)
+        pipe.add_stream("samples", shape=(4,), dtype=np.float32, frames=12, cache_align=False)
         pipe.add_event("shutdown", initial_state=True)
         pipe.add_task(
             "acquire",
@@ -503,11 +522,13 @@ class PipelineCompileTests(unittest.TestCase):
 
         self.assertIn("format_version = 1", text)
         self.assertIn('name = "radar"', text)
+        self.assertIn("frames = 12", text)
         self.assertIn(f'function_module = "{_task_fn.__module__}"', text)
         self.assertIn('function_qualname = "_task_fn"', text)
         self.assertEqual(restored.name, "radar")
         self.assertEqual(restored._streams["samples"]["shape"], (4,))
         self.assertEqual(restored._streams["samples"]["dtype"], np.dtype(np.float32))
+        self.assertEqual(restored._streams["samples"]["frames"], 12)
         self.assertFalse(restored._streams["samples"]["cache_align"])
         self.assertTrue(restored._events["shutdown"]["initial_state"])
         self.assertIs(restored._tasks["acquire"]["fn"], _task_fn)
@@ -519,6 +540,44 @@ class PipelineCompileTests(unittest.TestCase):
             restored._tasks["acquire"]["events"],
             {"shutdown": "shutdown"},
         )
+
+    def test_stream_reader_look_returns_memoryview_without_advancing(self):
+        reader = _FakeRawReader(np.array([1, 2, 3, 4], dtype=np.int16))
+        stream = make_reader_binding(
+            reader,
+            name="samples",
+            shape=(4,),
+            dtype=np.int16,
+        )
+
+        view = stream.look()
+
+        self.assertIsInstance(view, memoryview)
+        self.assertEqual(view.tobytes(), b"\x01\x00\x02\x00\x03\x00\x04\x00")
+        self.assertEqual(reader.calls, ["expose_reader_mem_view:8"])
+
+        stream.increment()
+
+        self.assertEqual(reader.calls, ["expose_reader_mem_view:8", "inc_reader_pos:8"])
+
+    def test_stream_writer_look_returns_memoryview_without_advancing(self):
+        writer = _FakeRawWriter()
+        stream = make_writer_binding(
+            writer,
+            name="samples",
+            shape=(4,),
+            dtype=np.int16,
+        )
+
+        view = stream.look()
+
+        self.assertIsInstance(view, memoryview)
+        view.cast("h")[:] = np.array([1, 2, 3, 4], dtype=np.int16)
+        self.assertEqual(writer.calls, ["expose_writer_mem_view:8"])
+
+        stream.increment()
+
+        self.assertEqual(writer.calls, ["expose_writer_mem_view:8", "inc_writer_pos:8"])
 
     def test_save_creates_parent_directories(self):
         pipe = Pipeline("radar")
@@ -623,6 +682,26 @@ class PipelineCompileTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "saved stream must include"):
                 Pipeline.reconstruct(path)
+
+    def test_reconstruct_defaults_missing_stream_frame_count_to_32(self):
+        with TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "pipeline.toml"
+            path.write_text(
+                (
+                    'format_version = 1\n'
+                    'name = "radar"\n'
+                    '[[streams]]\n'
+                    'name = "samples"\n'
+                    'shape = [4]\n'
+                    'dtype = "<f4"\n'
+                    "cache_align = false\n"
+                ),
+                encoding="utf-8",
+            )
+
+            restored = Pipeline.reconstruct(path)
+
+        self.assertEqual(restored._streams["samples"]["frames"], 32)
 
     def test_reconstruct_rejects_event_missing_name(self):
         with TemporaryDirectory() as tmpdir:
@@ -896,6 +975,20 @@ class PipelineCompileTests(unittest.TestCase):
         finally:
             pipe._manager.close()
 
+    def test_compile_uses_configured_frame_count_for_ring_size(self):
+        pipe = Pipeline("radar")
+
+        try:
+            pipe.add_stream("samples", shape=(4,), dtype=np.float32, frames=5, cache_align=False)
+            pipe.add_task("acquire", fn=_source_task, writes={"samples": "samples"})
+            pipe.add_task("sink", fn=_sample_reader, reads={"samples": "samples"})
+
+            pipe.compile()
+
+            self.assertEqual(pipe._manager._ring_specs["samples"].size, 80)
+        finally:
+            pipe._manager.close()
+
     def test_compile_keeps_ring_size_unaligned_when_cache_align_disabled(self):
         pipe = Pipeline("radar")
 
@@ -1014,14 +1107,16 @@ class _FakeRawReader:
         return self._array.copy()
 
     def expose_reader_mem_view(self, nbytes):
-        _ = nbytes
-        raise AssertionError("read_into path is not exercised in this test")
+        self.calls.append(f"expose_reader_mem_view:{nbytes}")
+        if nbytes > self._array.nbytes:
+            return memoryview(self._array), None, self._array.nbytes, False
+        return memoryview(self._array)[:nbytes], None, nbytes, False
 
     def simple_read(self, *_args, **_kwargs):
         raise AssertionError("read_into path is not exercised in this test")
 
-    def inc_reader_pos(self, *_args, **_kwargs):
-        raise AssertionError("read_into path is not exercised in this test")
+    def inc_reader_pos(self, nbytes, *_args, **_kwargs):
+        self.calls.append(f"inc_reader_pos:{nbytes}")
 
     def set_reader_active(self, active: bool) -> None:
         self.calls.append(f"set_reader_active:{active}")
@@ -1037,10 +1132,21 @@ class _FakeRawReader:
 class _FakeRawWriter:
     def __init__(self) -> None:
         self.last_written = None
+        self.calls: list[str] = []
+        self._view_buffer = np.zeros((0,), dtype=np.uint8)
 
     def write_array(self, array) -> int:
         self.last_written = np.asarray(array).copy()
         return int(self.last_written.nbytes)
+
+    def expose_writer_mem_view(self, nbytes):
+        self.calls.append(f"expose_writer_mem_view:{nbytes}")
+        if self._view_buffer.nbytes < nbytes:
+            self._view_buffer = np.zeros((nbytes,), dtype=np.uint8)
+        return memoryview(self._view_buffer)[:nbytes], None, nbytes, False
+
+    def inc_writer_pos(self, nbytes, *_args, **_kwargs):
+        self.calls.append(f"inc_writer_pos:{nbytes}")
 
 
 class _StickyRawReader:

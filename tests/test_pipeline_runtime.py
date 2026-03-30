@@ -61,6 +61,21 @@ def _toggle_runtime_sink(samples, done) -> None:
             return
 
 
+def _look_runtime_sink(samples, done) -> None:
+    while True:
+        view = samples.look()
+        if view is None:
+            time.sleep(0.001)
+            continue
+        first = bytes(view)
+        second = bytes(samples.look())
+        samples.increment()
+        self_check = samples.look()
+        if first == _FRAME.tobytes() and second == _FRAME.tobytes() and self_check is None:
+            done.signal()
+        return
+
+
 @unittest.skipIf(Pipeline is None or np is None, "pipeline runtime dependencies are required")
 class PipelineRuntimeTests(unittest.TestCase):
     def test_pipeline_runtime_moves_data_end_to_end(self) -> None:
@@ -121,6 +136,26 @@ class PipelineRuntimeTests(unittest.TestCase):
             trigger = pipe._manager._events["go"]
             trigger.signal()
             trigger.signal()
+
+            self.assertTrue(pipe._manager._events["done"].wait(timeout=3.0))
+        finally:
+            pipe.close()
+
+    def test_stream_look_requires_manual_increment(self) -> None:
+        pipe = Pipeline("look-runtime")
+
+        try:
+            pipe.add_stream("samples", shape=(4,), dtype=np.float32, cache_align=False)
+            pipe.add_event("done")
+            pipe.add_task("source", fn=_runtime_source, writes={"samples": "samples"})
+            pipe.add_task(
+                "sink",
+                fn=_look_runtime_sink,
+                reads={"samples": "samples"},
+                events={"done": "done"},
+            )
+
+            pipe.start()
 
             self.assertTrue(pipe._manager._events["done"].wait(timeout=3.0))
         finally:

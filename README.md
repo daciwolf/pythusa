@@ -21,13 +21,13 @@ PYTHUSA started as backend infrastructure for DSP processing work on the UCI Roc
 
 PYTHUSA has three runtime building blocks: streams, tasks, and optional events.
 
-Streams are fixed-shape, typed channels for moving frames between processes. Under the hood, each declared stream becomes a shared-memory ring buffer sized for 32 frames by default. That gives the runtime a reusable transport layer with low per-transfer overhead, stable backpressure behavior, and no need to allocate a new IPC object for every frame that moves through the graph.
+Streams are fixed-shape, typed channels for moving frames between processes. Under the hood, each declared stream becomes a shared-memory ring buffer sized for 32 frames by default, or whatever `frames=` value you pass to `add_stream()`. That gives the runtime a reusable transport layer with low per-transfer overhead, stable backpressure behavior, and no need to allocate a new IPC object for every frame that moves through the graph.
 
 Tasks are normal Python callables. Today, one registered task maps to one worker process. The `reads`, `writes`, and `events` mappings on `add_task()` tell the pipeline which local parameter names should be bound to which stream or event names when that task starts inside its own process.
 
 Compilation turns the declaration into a runnable DAG. `Pipeline.compile()` validates that every stream has exactly one writer, at least one reader, and no cycles in the task graph. It then creates the live rings and events, wraps each task with typed stream bindings, and records the startup order for the worker processes.
 
-Startup is explicit. `Pipeline.start()` launches tasks in reverse topological order so downstream readers are alive before upstream writers begin publishing. At runtime, read bindings are `StreamReader` objects and write bindings are `StreamWriter` objects. `read()` returns one shaped NumPy frame or `None` when no frame is ready, and `write()` validates shape and dtype before publishing the frame into shared memory.
+Startup is explicit. `Pipeline.start()` launches tasks in reverse topological order so downstream readers are alive before upstream writers begin publishing. At runtime, read bindings are `StreamReader` objects and write bindings are `StreamWriter` objects. `read()` returns one shaped NumPy frame or `None` when no frame is ready, `look()` returns a zero-copy memoryview for the next contiguous frame, and `write()` validates shape and dtype before publishing the frame into shared memory. Call `increment()` after you finish with the view from `look()`. Writers expose the same pattern for direct frame fills.
 
 Events are optional coordination primitives for gating work between tasks. `add_task.toggleable(...)` consumes one event activation per run, while `add_task.switchable(...)` waits for an event and reruns without resetting it. For observability, `start_monitor()` can sample per-task CPU, RSS, nice level, and ring pressure while the pipeline is running.
 
@@ -149,7 +149,7 @@ On Windows and other `spawn`-based multiprocessing environments, keep `pipe.star
 ## Public API
 
 - `pythusa.Pipeline`: high-level DAG builder and lifecycle owner for shared-memory multiprocess pipelines.
-- `pipe.add_stream(name, shape, dtype, cache_align=True)`: declare a framed stream.
+- `pipe.add_stream(name, shape, dtype, frames=32, cache_align=True)`: declare a framed stream and optionally set ring capacity in frames.
 - `pipe.add_task(...)`: bind task parameters to readers, writers, and events. Use `pipe.add_task.toggleable(...)` or `pipe.add_task.switchable(...)` for event-controlled tasks.
 - `pipe.start_monitor()` and `pipe.metrics()`: collect CPU, RSS, nice, and ring-pressure snapshots for running tasks.
 - `pipe.save(path)` and `pythusa.Pipeline.reconstruct(path)`: persist or restore pipeline declarations as TOML. Saved task callables must be importable top-level functions.
@@ -177,11 +177,12 @@ Useful knobs and modes:
 DSP_BENCH_ROWS=16384 DSP_BENCH_PIPELINES=4 DSP_BENCH_DURATION_S=2.0 python benchmarks/dsp_benchmark_suite.py
 python benchmarks/dsp_benchmark_suite.py --throughput-max
 python benchmarks/dsp_benchmark_suite.py --latency-min --kernels fir32,fir128,rfft
+python benchmarks/dsp_benchmark_suite.py --balanced --graph --graph-out benchmarks/results/dsp-balanced-heatmaps.png --no-show
 ```
 
 The suite reports per-kernel throughput, latency, and memory for passthrough, windowing, FIR filters, FFT, power spectrum, and STFT workloads. `balanced` is the default mode. `task_rss_mb` is summed worker RSS and can overcount shared-memory mappings; `ring_mb` is reserved shared-memory ring capacity.
 
-Structured output is available with `--json` and `--json-out`:
+Structured output is available with `--json` and `--json-out`, and DSP heatmaps are available with `--graph`, `--graph-out`, and `--no-show`:
 
 ```bash
 python benchmarks/dsp_benchmark_suite.py --balanced --json-out benchmarks/results/dsp-balanced.json

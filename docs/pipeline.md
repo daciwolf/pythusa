@@ -136,6 +136,7 @@ pipe.add_stream(
     "samples",
     shape=(4096,),
     dtype=np.float32,
+    frames=64,
     cache_align=True,
 )
 ```
@@ -145,10 +146,11 @@ Parameters:
 - `name`: unique stream name within the pipeline
 - `shape`: frame shape passed to task bindings
 - `dtype`: NumPy dtype for one frame
+- `frames`: number of frames to allocate in the backing ring buffer
 - `cache_align`: whether compile-time ring sizing should apply cache-line alignment
 
 Conceptually, a stream is the conveyor belt between two machines.
-At compile time, that declaration becomes a shared-memory ring sized for 32 frames by default.
+At compile time, that declaration becomes a shared-memory ring sized for 32 frames by default, or the explicit `frames=` value you provide.
 
 Current rules:
 
@@ -282,6 +284,8 @@ Reader bindings support:
 
 - `read() -> np.ndarray | None`
 - `read_into(out) -> bool`
+- `look() -> memoryview | None`
+- `increment()`
 - `set_blocking(bool)`
 - `is_blocking()`
 - `.raw`
@@ -290,6 +294,8 @@ Reader bindings support:
 Writer bindings support:
 
 - `write(array) -> bool`
+- `look() -> memoryview | None`
+- `increment()`
 - `.raw`
 - `.ring`
 
@@ -325,6 +331,12 @@ Notes:
 
 - `read()` returns an owned NumPy array copy
 - `read_into(...)` avoids that allocation by filling a provided array
+- `look()` returns a zero-copy memoryview for the next contiguous frame and does not advance the reader
+- call `increment()` after you finish using the view from `look()`
+- `look()` returns `None` when the next frame is not available or is wrapped across the ring boundary
+- `writer.look()` returns a zero-copy writable memoryview for the next contiguous frame and does not advance the writer
+- call `writer.increment()` after you fill the view from `writer.look()`
+- `writer.look()` returns `None` when the next frame would wrap across the ring boundary
 - `write(...)` validates shape and dtype before publishing
 - `.raw` and `.ring` expose the underlying shared-memory ring for direct low-level access
 

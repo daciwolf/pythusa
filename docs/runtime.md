@@ -374,6 +374,8 @@ Reader bindings provide:
 
 - `read()`
 - `read_into(out)`
+- `look()`
+- `increment()`
 - `set_blocking(bool)`
 - `is_blocking()`
 - `.raw`
@@ -382,6 +384,8 @@ Reader bindings provide:
 Writer bindings provide:
 
 - `write(array)`
+- `look()`
+- `increment()`
 - `.raw`
 - `.ring`
 
@@ -398,6 +402,10 @@ def worker(samples, fft) -> None:
         if fft.write(spectrum):
             return
 ```
+
+If you need a zero-copy borrow instead of filling a caller-owned array, `look()` returns a memoryview for the next contiguous frame and leaves the reader position unchanged. Call `increment()` after you are done with the view. If the next frame is wrapped across the ring boundary, `look()` returns `None` rather than copying.
+
+Writers have the same pattern: `look()` returns a writable memoryview for the next contiguous frame, and `increment()` commits that frame once you are done filling it. If the next slot would wrap, `look()` returns `None` rather than copying.
 
 ## Blocking And Backpressure
 

@@ -34,7 +34,7 @@ dependencies = [
 [project.optional-dependencies]
 test = ["pytest>=8"]
 examples = ["joblib>=1.4", "matplotlib>=3.8"]
-benchmarks = ["joblib>=1.4", "numba>=0.61"]
+benchmarks = ["joblib>=1.4", "matplotlib>=3.8", "numba>=0.61"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

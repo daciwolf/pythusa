@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import importlib
 import math
 import multiprocessing as mp
 import os
+from pathlib import Path
 import struct
 import time
 
@@ -131,6 +133,22 @@ def _parse_args() -> argparse.Namespace:
         "--json-out",
         help="Write the JSON summary to this file path.",
     )
+    parser.add_argument(
+        "--graph",
+        action="store_true",
+        help="Render benchmark heatmaps after the run.",
+    )
+    parser.add_argument(
+        "--graph-out",
+        type=Path,
+        default=None,
+        help="Optional path to save benchmark heatmaps.",
+    )
+    parser.add_argument(
+        "--no-show",
+        action="store_true",
+        help="Build graph output without opening a matplotlib window.",
+    )
     return parser.parse_args()
 
 
@@ -161,6 +179,8 @@ def _apply_cli_overrides(args: argparse.Namespace) -> None:
 
 
 def _validate_selected_kernels() -> None:
+    if not SELECTED_KERNELS:
+        raise SystemExit("Select at least one kernel.")
     unknown_kernels = sorted(set(SELECTED_KERNELS) - set(KERNEL_NAMES))
     if unknown_kernels:
         raise SystemExit(f"Unknown kernels: {', '.join(unknown_kernels)}")
@@ -342,6 +362,150 @@ def _percentile_ms(samples_ns: np.ndarray, percentile: float) -> float:
     return float(np.percentile(samples_ns / 1_000_000.0, percentile))
 
 
+def _graph_requested(args: argparse.Namespace) -> bool:
+    return args.graph or args.graph_out is not None
+
+
+def _metric_matrix(results: list[BenchmarkResult], value_attr: str) -> np.ndarray:
+    return np.asarray([[getattr(result, value_attr) for result in results]], dtype=np.float64)
+
+
+def _load_pyplot():
+    try:
+        return importlib.import_module("matplotlib.pyplot")
+    except ModuleNotFoundError as exc:
+        raise SystemExit(
+            "Graphing requires matplotlib. Install benchmark extras with "
+            "`python -m pip install -e '.[benchmarks]'`."
+        ) from exc
+
+
+def _annotate_heatmap(ax, matrix: np.ndarray, *, fmt: str) -> None:
+    finite = matrix[np.isfinite(matrix)]
+    threshold = np.nanmean(finite) if finite.size else 0.0
+
+    for row_index in range(matrix.shape[0]):
+        for col_index in range(matrix.shape[1]):
+            value = matrix[row_index, col_index]
+            if not np.isfinite(value):
+                continue
+            color = "black" if value >= threshold else "white"
+            ax.text(
+                col_index,
+                row_index,
+                format(value, fmt),
+                ha="center",
+                va="center",
+                color=color,
+                fontsize=8,
+            )
+
+
+def _draw_heatmap(
+    plt,
+    ax,
+    matrix: np.ndarray,
+    *,
+    title: str,
+    xticklabels: list[str],
+    yticklabels: list[str],
+    colorbar_label: str,
+    annotation_fmt: str,
+    cmap: str,
+) -> None:
+    image = ax.imshow(matrix, aspect="auto", cmap=cmap)
+    ax.set_title(title)
+    ax.set_xlabel("Kernel")
+    ax.set_xticks(range(len(xticklabels)))
+    ax.set_xticklabels(xticklabels, rotation=20, ha="right")
+    ax.set_yticks(range(len(yticklabels)))
+    ax.set_yticklabels(yticklabels)
+    _annotate_heatmap(ax, matrix, fmt=annotation_fmt)
+    plt.colorbar(image, ax=ax, label=colorbar_label)
+
+
+def _plot_heatmaps(
+    results: list[BenchmarkResult],
+    *,
+    plot_out: Path | None,
+    no_show: bool,
+) -> None:
+    plt = _load_pyplot()
+    kernels = [result.kernel for result in results]
+    yticklabels = [f"{BENCHMARK_MODE} | rows={ROWS:,} ch={CHANNELS} p={PIPELINES}"]
+
+    throughput = _metric_matrix(results, "throughput_mb_s")
+    mean_latency = _metric_matrix(results, "latency_mean_ms")
+    p95_latency = _metric_matrix(results, "latency_p95_ms")
+    p99_latency = _metric_matrix(results, "latency_p99_ms")
+
+    figure, axes = plt.subplots(2, 2, figsize=(16, 8))
+    _draw_heatmap(
+        plt,
+        axes[0, 0],
+        throughput,
+        title="Throughput by Kernel",
+        xticklabels=kernels,
+        yticklabels=yticklabels,
+        colorbar_label="MB/s",
+        annotation_fmt=".1f",
+        cmap="viridis",
+    )
+    _draw_heatmap(
+        plt,
+        axes[0, 1],
+        mean_latency,
+        title="Mean Latency by Kernel",
+        xticklabels=kernels,
+        yticklabels=yticklabels,
+        colorbar_label="ms",
+        annotation_fmt=".3f",
+        cmap="viridis_r",
+    )
+    _draw_heatmap(
+        plt,
+        axes[1, 0],
+        p95_latency,
+        title="P95 Latency by Kernel",
+        xticklabels=kernels,
+        yticklabels=yticklabels,
+        colorbar_label="ms",
+        annotation_fmt=".3f",
+        cmap="viridis_r",
+    )
+    _draw_heatmap(
+        plt,
+        axes[1, 1],
+        p99_latency,
+        title="P99 Latency by Kernel",
+        xticklabels=kernels,
+        yticklabels=yticklabels,
+        colorbar_label="ms",
+        annotation_fmt=".3f",
+        cmap="viridis_r",
+    )
+
+    best_throughput = max(results, key=lambda item: item.throughput_mb_s)
+    lowest_mean_latency = min(results, key=lambda item: item.latency_mean_ms)
+    figure.suptitle(
+        "PYTHUSA DSP Benchmark Heatmaps\n"
+        f"Mode {BENCHMARK_MODE} | Duration {DURATION_S:.1f}s | "
+        f"Best throughput {best_throughput.kernel}={best_throughput.throughput_mb_s:.2f} MB/s | "
+        f"Lowest mean latency {lowest_mean_latency.kernel}={lowest_mean_latency.latency_mean_ms:.3f} ms",
+        fontsize=13,
+    )
+    figure.tight_layout(rect=(0.0, 0.0, 1.0, 0.93))
+
+    if plot_out is not None:
+        plot_out.parent.mkdir(parents=True, exist_ok=True)
+        figure.savefig(plot_out, dpi=180)
+
+    if no_show:
+        plt.close(figure)
+    else:
+        plt.show()
+
+
 def run_kernel_benchmark(kernel_name: str) -> BenchmarkResult:
     ctx = mp.get_context("spawn")
     processed_bytes = ctx.Array("Q", PIPELINES)
@@ -511,6 +675,7 @@ def main() -> None:
     args = _parse_args()
     _apply_cli_overrides(args)
     _validate_selected_kernels()
+    graph_requested = _graph_requested(args)
     if CHANNELS < 1:
         raise SystemExit("DSP_BENCH_CHANNELS must be at least 1.")
     if RING_DEPTH < 2:
@@ -519,6 +684,8 @@ def main() -> None:
         raise SystemExit("DSP_BENCH_MAX_IN_FLIGHT_BATCHES must be >= 0.")
     if MAX_IN_FLIGHT_BATCHES >= RING_DEPTH:
         raise SystemExit("DSP_BENCH_MAX_IN_FLIGHT_BATCHES must be smaller than DSP_BENCH_RING_DEPTH.")
+    if args.no_show and not graph_requested:
+        raise SystemExit("--no-show requires --graph or --graph-out.")
     results: list[BenchmarkResult] = []
     if not args.json:
         _print_header()
@@ -533,6 +700,10 @@ def main() -> None:
         print("memory note: task_rss_mb is summed worker RSS and can overcount shared-memory mappings.")
         if args.json_out is not None:
             print(f"json_out={args.json_out}")
+    if graph_requested:
+        _plot_heatmaps(results, plot_out=args.graph_out, no_show=args.no_show)
+        if not args.json and args.graph_out is not None:
+            print(f"graph_out={args.graph_out}")
 
 
 if __name__ == "__main__":

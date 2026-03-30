@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from dataclasses import dataclass
 import importlib.util
 import sys
@@ -93,6 +94,74 @@ class DSPBenchmarkHelperTests(unittest.TestCase):
         with patch.object(DSP_BENCH, "MAX_IN_FLIGHT_BATCHES", 1):
             self.assertFalse(DSP_BENCH._wait_for_inflight_budget(writer, time.perf_counter_ns() - 1))
         writer.compute_max_amount_writable.assert_not_called()
+
+    def test_parse_args_accepts_graph_options(self) -> None:
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "dsp_benchmark_suite.py",
+                "--graph",
+                "--graph-out",
+                "/tmp/dsp-heatmaps.png",
+                "--no-show",
+            ],
+        ):
+            args = DSP_BENCH._parse_args()
+
+        self.assertTrue(args.graph)
+        self.assertEqual(args.graph_out, Path("/tmp/dsp-heatmaps.png"))
+        self.assertTrue(args.no_show)
+
+    def test_graph_requested_accepts_flag_or_output_path(self) -> None:
+        self.assertTrue(DSP_BENCH._graph_requested(argparse.Namespace(graph=True, graph_out=None)))
+        self.assertTrue(DSP_BENCH._graph_requested(argparse.Namespace(graph=False, graph_out=Path("/tmp/out.png"))))
+        self.assertFalse(DSP_BENCH._graph_requested(argparse.Namespace(graph=False, graph_out=None)))
+
+    def test_metric_matrix_preserves_result_order(self) -> None:
+        results = [
+            DSP_BENCH.BenchmarkResult(
+                kernel="gain",
+                throughput_mb_s=12.5,
+                batches=10,
+                payload_bytes=100,
+                latency_mean_ms=1.0,
+                latency_min_ms=0.8,
+                latency_p50_ms=0.9,
+                latency_p95_ms=1.4,
+                latency_p99_ms=1.8,
+                latency_max_ms=2.0,
+                ring_reserved_mb=3.0,
+                peak_task_rss_mb=4.0,
+                peak_parent_rss_mb=5.0,
+            ),
+            DSP_BENCH.BenchmarkResult(
+                kernel="rfft",
+                throughput_mb_s=33.25,
+                batches=20,
+                payload_bytes=200,
+                latency_mean_ms=0.4,
+                latency_min_ms=0.2,
+                latency_p50_ms=0.3,
+                latency_p95_ms=0.7,
+                latency_p99_ms=0.9,
+                latency_max_ms=1.1,
+                ring_reserved_mb=3.0,
+                peak_task_rss_mb=4.0,
+                peak_parent_rss_mb=5.0,
+            ),
+        ]
+
+        matrix = DSP_BENCH._metric_matrix(results, "throughput_mb_s")
+
+        np.testing.assert_array_equal(matrix, np.asarray([[12.5, 33.25]], dtype=np.float64))
+
+    def test_load_pyplot_reports_missing_matplotlib_clearly(self) -> None:
+        with patch.object(DSP_BENCH.importlib, "import_module", side_effect=ModuleNotFoundError("matplotlib")):
+            with self.assertRaises(SystemExit) as exc_info:
+                DSP_BENCH._load_pyplot()
+
+        self.assertIn("Install benchmark extras", str(exc_info.exception))
 
 
 class BenchmarkReportingTests(unittest.TestCase):

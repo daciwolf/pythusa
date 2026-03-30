@@ -27,6 +27,8 @@ from ._toml_io import (
     resolve_callable,
 )
 
+_DEFAULT_STREAM_FRAMES = 32
+
 
 class Pipeline:
     """Public DAG builder and lifecycle owner for a compiled runtime pipeline."""
@@ -50,10 +52,12 @@ class Pipeline:
         *,
         shape: tuple[int, ...],
         dtype: Any,
+        frames: int = _DEFAULT_STREAM_FRAMES,
         cache_align: bool = True,
         description: str | None = None,
     ) -> "Pipeline":
         self._ensure_open()
+        frames = _validated_stream_frames(name, frames)
         self._register_unique(
             store=self._streams,
             kind="Stream",
@@ -62,6 +66,7 @@ class Pipeline:
                 "name": name,
                 "shape": shape,
                 "dtype": dtype,
+                "frames": frames,
                 "cache_align": cache_align,
                 "description": description,
             },
@@ -229,6 +234,7 @@ class Pipeline:
                 stream["name"],
                 shape=tuple(stream["shape"]),
                 dtype=np.dtype(stream["dtype"]),
+                frames=stream.get("frames", _DEFAULT_STREAM_FRAMES),
                 cache_align=stream.get("cache_align", True),
                 description=stream.get("description"),
             )
@@ -342,5 +348,14 @@ class Pipeline:
     def _ensure_open(self) -> None:
         if self._closed:
             raise RuntimeError("Pipeline is closed.")
+
+
+def _validated_stream_frames(name: str, frames: Any) -> int:
+    if isinstance(frames, bool) or not isinstance(frames, int):
+        raise TypeError(f"Stream '{name}': frames must be an integer.")
+    if frames < 1:
+        raise ValueError(f"Stream '{name}': frames must be >= 1.")
+    return frames
+
 
 __all__ = ["Pipeline"]

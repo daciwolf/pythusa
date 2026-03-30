@@ -24,6 +24,8 @@ class StreamReader:
 
     `raw` exposes the underlying SharedRingBuffer for users who want direct
     ring access. `read()` and `read_into()` are convenience helpers on top.
+    `look()` returns a zero-copy memoryview for the next contiguous frame, and
+    `increment()` advances the reader after you are done with that view.
 
     `set_blocking(False)` marks this reader inactive so writers stop treating
     it as a backpressure participant. Re-enabling jumps the reader to the
@@ -54,6 +56,15 @@ class StreamReader:
         self.raw.inc_reader_pos(self.frame_nbytes)
         return True
 
+    def look(self) -> memoryview | None:
+        mv1, mv2, size_readable, wrap_around = self.raw.expose_reader_mem_view(self.frame_nbytes)
+        if size_readable < self.frame_nbytes or wrap_around or mv2 is not None:
+            return None
+        return mv1
+
+    def increment(self) -> None:
+        self.raw.inc_reader_pos(self.frame_nbytes)
+
     def set_blocking(self, blocking: bool) -> None:
         if blocking:
             self.raw.jump_to_writer()
@@ -71,6 +82,8 @@ class StreamWriter:
 
     `raw` exposes the underlying SharedRingBuffer for direct low-level access.
     `write()` validates one frame and publishes it using the raw ring helper.
+    `look()` returns a zero-copy writable memoryview for the next contiguous
+    frame, and `increment()` advances the writer after you fill that view.
     """
 
     def __init__(self, raw: SharedRingBuffer, spec: _StreamBindingSpec) -> None:
@@ -84,6 +97,15 @@ class StreamWriter:
     def write(self, array: np.ndarray) -> bool:
         frame = _require_frame_array(array, shape=self.shape, dtype=self.dtype)
         return self.raw.write_array(frame) == self.frame_nbytes
+
+    def look(self) -> memoryview | None:
+        mv1, mv2, size_writeable, wrap_around = self.raw.expose_writer_mem_view(self.frame_nbytes)
+        if size_writeable < self.frame_nbytes or wrap_around or mv2 is not None:
+            return None
+        return mv1
+
+    def increment(self) -> None:
+        self.raw.inc_writer_pos(self.frame_nbytes)
 
 
 def make_reader_binding(

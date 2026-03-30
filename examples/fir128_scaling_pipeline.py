@@ -1022,54 +1022,6 @@ def _plot_sweeps(
         annotation_fmt=".2f",
     )
 
-    if rate_results:
-        rate_best_throughput = max(rate_results, key=lambda item: item.throughput_mb_s)
-        rate_best_cell = _result_cell(
-            rate_best_throughput,
-            rate_values,
-            worker_values,
-            row_attr="sample_rate_hz",
-            col_attr="worker_count",
-        )
-        axes[0, 0].scatter(rate_best_cell[1], rate_best_cell[0], marker="*", s=220, c="red", edgecolors="white")
-
-    frame_best_throughput = max(frame_results, key=lambda item: item.throughput_mb_s)
-    frame_best_cell = _result_cell(
-        frame_best_throughput,
-        frame_values,
-        worker_values,
-        row_attr="frame_length",
-        col_attr="worker_count",
-    )
-    axes[1, 0].scatter(frame_best_cell[1], frame_best_cell[0], marker="*", s=220, c="red", edgecolors="white")
-
-    latency_best_cell = _result_cell(
-        lowest_latency,
-        frame_values,
-        worker_values,
-        row_attr="frame_length",
-        col_attr="worker_count",
-    )
-    axes[1, 1].scatter(latency_best_cell[1], latency_best_cell[0], marker="*", s=220, c="cyan", edgecolors="black")
-
-    if highest_sustained is not None:
-        sustained_cell = _result_cell(
-            highest_sustained,
-            rate_values,
-            worker_values,
-            row_attr="sample_rate_hz",
-            col_attr="worker_count",
-        )
-        axes[0, 1].scatter(
-            sustained_cell[1],
-            sustained_cell[0],
-            marker="o",
-            s=180,
-            facecolors="none",
-            edgecolors="white",
-            linewidths=2.0,
-        )
-
     if highest_sustained is not None:
         summary_title = (
             f"PYTHUSA {title_label} scaling sweep\n"

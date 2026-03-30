@@ -305,7 +305,7 @@ def _plot_results(
     figure, axes = plt.subplots(1, 2, figsize=(15, 6))
 
     speed_ax = axes[0]
-    speed_ax.plot(frame_sizes, throughputs, marker="o", linewidth=2.2, color=throughput_color)
+    speed_ax.plot(frame_sizes, throughputs, linewidth=2.2, color=throughput_color)
     speed_ax.set_xscale("log", base=2)
     speed_ax.set_xlabel("Frame Length")
     speed_ax.set_ylabel("Input-Equivalent Throughput (MB/s)")
@@ -332,8 +332,8 @@ def _plot_results(
         )
 
     latency_ax = axes[1]
-    latency_ax.plot(frame_sizes, mean_latencies, marker="o", linewidth=2.2, color=mean_color, label="Mean")
-    latency_ax.plot(frame_sizes, p95_latencies, marker="s", linewidth=2.2, color=p95_color, label="P95")
+    latency_ax.plot(frame_sizes, mean_latencies, linewidth=2.2, color=mean_color, label="Mean")
+    latency_ax.plot(frame_sizes, p95_latencies, linewidth=2.2, color=p95_color, label="P95")
     latency_ax.set_xscale("log", base=2)
     latency_ax.set_xlabel("Frame Length")
     latency_ax.set_ylabel("Latency (ms)")
