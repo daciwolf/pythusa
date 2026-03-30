@@ -167,3 +167,8 @@ python benchmarks/numba_candidate_benchmark.py
 ```
 
 The benchmark command set and output conventions are documented in [Benchmark Guide](benchmarks.md). Install `.[benchmarks]` for the full benchmark and comparison set.
+
+## License
+
+PYTHUSA is licensed under the GNU General Public License, version 2 only (`GPL-2.0-only`).
+See the repository `LICENSE` file for the full license text.

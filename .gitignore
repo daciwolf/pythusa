@@ -9,3 +9,5 @@ benchmarks/results/
 build/
 dist/
 *.egg-info/
+AGENTS.md
+.codex/
