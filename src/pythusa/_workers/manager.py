@@ -93,7 +93,11 @@ class Manager:
     def create_event(self, spec: EventSpec) -> "Manager":
         """Register an event spec and create the live WorkerEvent."""
         self._event_specs[spec.name] = spec
-        self._events[spec.name] = WorkerEvent(name=spec.name, initial_state=spec.initial_state)
+        self._events[spec.name] = WorkerEvent(
+            name=spec.name,
+            initial_state=spec.initial_state,
+            ctx=self._ctx,
+        )
         return self
 
     def create_task(self, spec: TaskSpec) -> "Manager":

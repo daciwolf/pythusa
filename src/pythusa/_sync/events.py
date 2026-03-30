@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import multiprocessing as mp
 from dataclasses import dataclass
+from multiprocessing.context import BaseContext
 from typing import Optional
 
 
@@ -31,13 +32,20 @@ class WorkerEvent:
 
     __slots__ = ("name", "_count", "_event", "_lock", "_semaphore")
 
-    def __init__(self, name: str, initial_state: bool = False):
+    def __init__(
+        self,
+        name: str,
+        initial_state: bool = False,
+        *,
+        ctx: BaseContext | None = None,
+    ):
         self.name = name
+        ctx = ctx or mp.get_context("spawn")
         initial_count = 1 if initial_state else 0
-        self._count = mp.Value("q", initial_count, lock=False)
-        self._event = mp.Event()
-        self._lock = mp.Lock()
-        self._semaphore = mp.Semaphore(initial_count)
+        self._count = ctx.Value("q", initial_count, lock=False)
+        self._event = ctx.Event()
+        self._lock = ctx.Lock()
+        self._semaphore = ctx.Semaphore(initial_count)
         if initial_count:
             self._event.set()
 
