@@ -1,8 +1,8 @@
 site_name: PYTHUSA
 site_description: Python-first shared-memory DSP pipelines
-site_url: https://<your-github-username>.github.io/pythusa/
-repo_url: https://github.com/<your-github-username>/pythusa
-repo_name: <your-github-username>/pythusa
+site_url: https://daciwolf.github.io/pythusa/
+repo_url: https://github.com/daciwolf/pythusa
+repo_name: daciwolf/pythusa
 
 theme:
   name: mkdocs

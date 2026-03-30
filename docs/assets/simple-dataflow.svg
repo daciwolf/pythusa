@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="180" viewBox="0 0 980 180" role="img" aria-labelledby="title desc">
+  <title id="title">PYTHUSA simple dataflow</title>
+  <desc id="desc">A simple pipeline showing a data aggregator, a ring buffer, a processor, another ring buffer, and an output graph.</desc>
+  <defs>
+    <style>
+      .label { font: 600 18px "Segoe UI", Arial, sans-serif; fill: #24292f; }
+      .small { font: 500 13px "Segoe UI", Arial, sans-serif; fill: #57606a; }
+      .box { fill: #f6f8fa; stroke: #d0d7de; stroke-width: 2; rx: 14; ry: 14; }
+      .ring { fill: #ddf4ff; stroke: #54aeff; stroke-width: 2; rx: 14; ry: 14; }
+      .proc { fill: #dafbe1; stroke: #4ac26b; stroke-width: 2; rx: 14; ry: 14; }
+      .out { fill: #fff8c5; stroke: #d4a72c; stroke-width: 2; rx: 14; ry: 14; }
+      .arrow { stroke: #57606a; stroke-width: 3; fill: none; marker-end: url(#arrowhead); }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#57606a"/>
+    </marker>
+  </defs>
+
+  <rect x="20" y="40" width="160" height="100" class="box"/>
+  <text x="100" y="82" text-anchor="middle" class="label">Data Aggregator</text>
+  <text x="100" y="108" text-anchor="middle" class="small">sensor frames</text>
+
+  <rect x="220" y="40" width="150" height="100" class="ring"/>
+  <text x="295" y="82" text-anchor="middle" class="label">Ring Buffer</text>
+  <text x="295" y="108" text-anchor="middle" class="small">shared memory</text>
+
+  <rect x="410" y="40" width="160" height="100" class="proc"/>
+  <text x="490" y="82" text-anchor="middle" class="label">Processor</text>
+  <text x="490" y="108" text-anchor="middle" class="small">filters + FFT</text>
+
+  <rect x="610" y="40" width="150" height="100" class="ring"/>
+  <text x="685" y="82" text-anchor="middle" class="label">Ring Buffer</text>
+  <text x="685" y="108" text-anchor="middle" class="small">processed frames</text>
+
+  <rect x="800" y="40" width="160" height="100" class="out"/>
+  <text x="880" y="82" text-anchor="middle" class="label">Output Graph</text>
+  <text x="880" y="108" text-anchor="middle" class="small">metrics + plots</text>
+
+  <path d="M 180 90 L 220 90" class="arrow"/>
+  <path d="M 370 90 L 410 90" class="arrow"/>
+  <path d="M 570 90 L 610 90" class="arrow"/>
+  <path d="M 760 90 L 800 90" class="arrow"/>
+</svg>

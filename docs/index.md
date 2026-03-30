@@ -10,6 +10,8 @@ PYTHUSA is built around typed streams of fixed-shape NumPy frames. You declare a
 
 PYTHUSA started as backend infrastructure for DSP processing work on the UCI Rocket Project Liquids team and was later extracted into its own library once the shared-memory runtime proved useful more broadly.
 
+![PYTHUSA simple dataflow](assets/simple-dataflow.svg)
+
 ## How It Works
 
 PYTHUSA has three runtime building blocks: streams, tasks, and optional events.
