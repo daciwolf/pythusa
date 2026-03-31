@@ -150,7 +150,7 @@ On Windows and other `spawn`-based multiprocessing environments, keep `pipe.star
 
 - `pythusa.Pipeline`: high-level DAG builder and lifecycle owner for shared-memory multiprocess pipelines.
 - `pipe.add_stream(name, shape, dtype, frames=32, cache_align=True)`: declare a framed stream and optionally set ring capacity in frames.
-- `pipe.add_task(...)`: bind task parameters to readers, writers, and events. Use `pipe.add_task.toggleable(...)` or `pipe.add_task.switchable(...)` for event-controlled tasks.
+- `pipe.add_task(...)`: bind task parameters to readers, writers, and events. Use `pipe.add_task.toggleable(...)`, `pipe.add_task.switchable(...)`, or `pipe.add_task.terminator(...)` for special task forms.
 - `pipe.start_monitor()` and `pipe.metrics()`: collect CPU, RSS, nice, and ring-pressure snapshots for running tasks.
 - `pipe.save(path)` and `pythusa.Pipeline.reconstruct(path)`: persist or restore pipeline declarations as TOML. Saved task callables must be importable top-level functions.
 - `pythusa.Manager`, `pythusa.RingSpec`, `pythusa.TaskSpec`, `pythusa.get_reader`, `pythusa.get_writer`, and `pythusa.get_event`: lower-level primitives for users who want direct ring and worker control.

@@ -389,7 +389,23 @@ Writer bindings provide:
 - `.raw`
 - `.ring`
 
-For performance-sensitive tasks, prefer `read_into(...)` over `read()` to avoid one allocation per frame:
+Examples:
+
+`read()`:
+
+```python
+def worker(samples, fft) -> None:
+    while True:
+        frame = samples.read()
+        if frame is None:
+            time.sleep(0.001)
+            continue
+        spectrum = np.fft.rfft(frame).astype(np.complex64, copy=False)
+        if fft.write(spectrum):
+            return
+```
+
+`read_into(out)`:
 
 ```python
 def worker(samples, fft) -> None:
@@ -403,11 +419,7 @@ def worker(samples, fft) -> None:
             return
 ```
 
-If you need a zero-copy borrow instead of filling a caller-owned array, `look()` returns a memoryview for the next contiguous frame and leaves the reader position unchanged. Call `increment()` after you are done with the view. If the next frame is wrapped across the ring boundary, `look()` returns `None` rather than copying.
-
-Writers have the same pattern: `look()` returns a writable memoryview for the next contiguous frame, and `increment()` commits that frame once you are done filling it. If the next slot would wrap, `look()` returns `None` rather than copying.
-
-Example:
+`look()` and `increment()` on the reader:
 
 ```python
 def worker(samples, fft) -> None:
@@ -417,19 +429,56 @@ def worker(samples, fft) -> None:
             time.sleep(0.001)
             continue
         frame = np.frombuffer(frame_view, dtype=np.float32).reshape((4096,))
-
-        fft_view = fft.look()
-        if fft_view is None:
-            time.sleep(0.001)
-            continue
-
-        spectrum = np.frombuffer(fft_view, dtype=np.complex64).reshape((2049,))
-        spectrum[:] = np.fft.rfft(frame).astype(np.complex64, copy=False)
-
+        spectrum = np.fft.rfft(frame).astype(np.complex64, copy=False)
         samples.increment()
-        fft.increment()
-        return
+        if fft.write(spectrum):
+            return
 ```
+
+`set_blocking()` and `is_blocking()`:
+
+```python
+def worker(samples) -> None:
+    samples.set_blocking(False)
+    if not samples.is_blocking():
+        frame_view = samples.look()
+        if frame_view is not None:
+            print(np.frombuffer(frame_view, dtype=np.float32))
+            samples.increment()
+    samples.set_blocking(True)
+```
+
+`write()`:
+
+```python
+def worker(samples, fft) -> None:
+    frame = samples.read()
+    if frame is None:
+        return
+    spectrum = np.fft.rfft(frame).astype(np.complex64, copy=False)
+    fft.write(spectrum)
+```
+
+`look()` and `increment()` on the writer:
+
+```python
+def worker(samples, fft) -> None:
+    frame = samples.read()
+    if frame is None:
+        return
+    fft_view = fft.look()
+    if fft_view is None:
+        return
+    spectrum = np.frombuffer(fft_view, dtype=np.complex64).reshape((2049,))
+    spectrum[:] = np.fft.rfft(frame).astype(np.complex64, copy=False)
+    fft.increment()
+```
+
+`look()` returns a memoryview for the next contiguous frame and leaves the reader position unchanged. Call `increment()` after you are done with the view. If the next frame is wrapped across the ring boundary, `look()` returns `None` rather than copying.
+
+Writers have the same pattern: `look()` returns a writable memoryview for the next contiguous frame, and `increment()` commits that frame once you are done filling it. If the next slot would wrap, `look()` returns `None` rather than copying.
+
+If you need a stream to count as having a reader but do not want that reader to do any work, use `pipe.add_task.terminator(...)` at the pipeline level. It marks the bound readers inactive and then exits.
 
 ## Blocking And Backpressure
 

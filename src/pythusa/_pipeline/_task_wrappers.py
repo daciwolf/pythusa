@@ -83,6 +83,25 @@ class _TaskRegistrationAPI:
             control_event=activate_on,
         )
 
+    def terminator(
+        self,
+        name: str,
+        *,
+        reads: dict[str, str],
+        description: str | None = None,
+    ) -> "Pipeline":
+        if not reads:
+            raise ValueError("Terminator tasks require at least one bound reader.")
+
+        return self._pipeline._add_task(
+            name=name,
+            fn=_terminator_task,
+            reads=reads,
+            writes=None,
+            events=None,
+            description=description,
+        )
+
     def _register_controlled_task(
         self,
         *,
@@ -172,6 +191,11 @@ def run_controlled_task(
             fn(**fn_kwargs)
 
     raise ValueError(f"Unsupported task control mode: {control_mode!r}")
+
+
+def _terminator_task(**kwargs: Any) -> None:
+    for binding in kwargs.values():
+        binding.set_blocking(False)
 
 
 def _activation_event(

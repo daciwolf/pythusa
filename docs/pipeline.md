@@ -242,6 +242,7 @@ Two controlled task forms are available:
 
 - `pipe.add_task.switchable(...)`
 - `pipe.add_task.toggleable(...)`
+- `pipe.add_task.terminator(...)`
 
 Example:
 
@@ -275,6 +276,8 @@ Rules:
 
 If `activate_on` is missing from the task's event bindings, registration raises `ValueError`.
 
+`terminator(...)` is a built-in no-op reader task. It binds one or more streams, marks those readers inactive, and then returns. Use it when a stream needs a reader for compilation but has no real downstream consumer.
+
 ## Stream Bindings Inside Tasks
 
 At runtime, tasks do not receive raw arrays directly.
@@ -299,23 +302,37 @@ Writer bindings support:
 - `.raw`
 - `.ring`
 
-Example:
+Examples:
+
+`read()`:
 
 ```python
 def worker(samples, fft) -> None:
     while True:
-        view = samples.look()
-        if view is None:
+        frame = samples.read()
+        if frame is None:
             time.sleep(0.001)
             continue
-        frame = np.frombuffer(view, dtype=np.float32).reshape((4096,))
         spectrum = np.fft.rfft(frame).astype(np.complex64, copy=False)
-        samples.increment()
         if fft.write(spectrum):
             return
 ```
 
-For lower-allocation paths on the writer side, fill the borrowed view directly:
+`read_into(out)`:
+
+```python
+def worker(samples, fft) -> None:
+    frame = np.empty((4096,), dtype=np.float32)
+    while True:
+        if not samples.read_into(frame):
+            time.sleep(0.001)
+            continue
+        spectrum = np.fft.rfft(frame).astype(np.complex64, copy=False)
+        if fft.write(spectrum):
+            return
+```
+
+`look()` and `increment()` on the reader:
 
 ```python
 def worker(samples, fft) -> None:
@@ -325,15 +342,49 @@ def worker(samples, fft) -> None:
             time.sleep(0.001)
             continue
         frame = np.frombuffer(frame_view, dtype=np.float32).reshape((4096,))
-        fft_view = fft.look()
-        if fft_view is None:
-            time.sleep(0.001)
-            continue
-        spectrum = np.frombuffer(fft_view, dtype=np.complex64).reshape((2049,))
-        spectrum[:] = np.fft.rfft(frame).astype(np.complex64, copy=False)
+        spectrum = np.fft.rfft(frame).astype(np.complex64, copy=False)
         samples.increment()
-        fft.increment()
+        if fft.write(spectrum):
+            return
+```
+
+`set_blocking()` and `is_blocking()`:
+
+```python
+def worker(samples) -> None:
+    samples.set_blocking(False)
+    if not samples.is_blocking():
+        latest = samples.look()
+        if latest is not None:
+            print(np.frombuffer(latest, dtype=np.float32))
+            samples.increment()
+    samples.set_blocking(True)
+```
+
+`write()`:
+
+```python
+def worker(samples, fft) -> None:
+    frame = samples.read()
+    if frame is None:
         return
+    spectrum = np.fft.rfft(frame).astype(np.complex64, copy=False)
+    fft.write(spectrum)
+```
+
+`look()` and `increment()` on the writer:
+
+```python
+def worker(samples, fft) -> None:
+    frame = samples.read()
+    if frame is None:
+        return
+    fft_view = fft.look()
+    if fft_view is None:
+        return
+    spectrum = np.frombuffer(fft_view, dtype=np.complex64).reshape((2049,))
+    spectrum[:] = np.fft.rfft(frame).astype(np.complex64, copy=False)
+    fft.increment()
 ```
 
 Notes:

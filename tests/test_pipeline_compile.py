@@ -9,12 +9,15 @@ try:
     from pythusa import Pipeline, ProcessMetrics
     from pythusa._pipeline._helpers import _invoke_task_with_bindings
     from pythusa._pipeline._stream_io import make_reader_binding, make_writer_binding
+    from pythusa._pipeline._task_wrappers import _terminator_task
 except ModuleNotFoundError:  # pragma: no cover - environment dependency
     np = None
     Pipeline = None
     ProcessMetrics = None
     _invoke_task_with_bindings = None
     make_reader_binding = None
+    make_writer_binding = None
+    _terminator_task = None
 
 
 @unittest.skipIf(Pipeline is None, "pipeline dependencies are required")
@@ -301,6 +304,21 @@ class PipelineCompileTests(unittest.TestCase):
                 events={"halt": "shutdown"},
             )
 
+    def test_add_task_terminator_registers_inactive_reader(self):
+        pipe = Pipeline("radar")
+
+        try:
+            pipe.add_stream("samples", shape=(4,), dtype=np.float32)
+            pipe.add_task("source", fn=_source_task, writes={"samples": "samples"})
+            pipe.add_task.terminator("drain", reads={"samples": "samples"})
+
+            pipe.compile()
+
+            self.assertIs(pipe._tasks["drain"]["fn"], _terminator_task)
+            self.assertEqual(pipe._manager._ring_specs["samples"].num_readers, 1)
+        finally:
+            pipe._manager.close()
+
     def test_add_event_rejects_duplicate_names(self):
         pipe = Pipeline("radar")
         pipe.add_event("shutdown")
@@ -559,6 +577,19 @@ class PipelineCompileTests(unittest.TestCase):
         stream.increment()
 
         self.assertEqual(reader.calls, ["expose_reader_mem_view:8", "inc_reader_pos:8"])
+
+    def test_terminator_task_marks_reader_inactive(self):
+        reader = _FakeRawReader(np.array([1, 2, 3, 4], dtype=np.int16))
+        stream = make_reader_binding(
+            reader,
+            name="samples",
+            shape=(4,),
+            dtype=np.int16,
+        )
+
+        _terminator_task(samples=stream)
+
+        self.assertEqual(reader.calls, ["set_reader_active:False"])
 
     def test_stream_writer_look_returns_memoryview_without_advancing(self):
         writer = _FakeRawWriter()
