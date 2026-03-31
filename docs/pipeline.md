@@ -304,27 +304,36 @@ Example:
 ```python
 def worker(samples, fft) -> None:
     while True:
-        frame = samples.read()
-        if frame is None:
+        view = samples.look()
+        if view is None:
             time.sleep(0.001)
             continue
+        frame = np.frombuffer(view, dtype=np.float32).reshape((4096,))
         spectrum = np.fft.rfft(frame).astype(np.complex64, copy=False)
+        samples.increment()
         if fft.write(spectrum):
             return
 ```
 
-For lower-allocation paths, prefer `read_into(...)`:
+For lower-allocation paths on the writer side, fill the borrowed view directly:
 
 ```python
 def worker(samples, fft) -> None:
-    frame = np.empty((4096,), dtype=np.float32)
     while True:
-        if not samples.read_into(frame):
+        frame_view = samples.look()
+        if frame_view is None:
             time.sleep(0.001)
             continue
-        spectrum = np.fft.rfft(frame).astype(np.complex64, copy=False)
-        if fft.write(spectrum):
-            return
+        frame = np.frombuffer(frame_view, dtype=np.float32).reshape((4096,))
+        fft_view = fft.look()
+        if fft_view is None:
+            time.sleep(0.001)
+            continue
+        spectrum = np.frombuffer(fft_view, dtype=np.complex64).reshape((2049,))
+        spectrum[:] = np.fft.rfft(frame).astype(np.complex64, copy=False)
+        samples.increment()
+        fft.increment()
+        return
 ```
 
 Notes:

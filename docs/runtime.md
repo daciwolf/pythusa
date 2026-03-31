@@ -407,6 +407,30 @@ If you need a zero-copy borrow instead of filling a caller-owned array, `look()`
 
 Writers have the same pattern: `look()` returns a writable memoryview for the next contiguous frame, and `increment()` commits that frame once you are done filling it. If the next slot would wrap, `look()` returns `None` rather than copying.
 
+Example:
+
+```python
+def worker(samples, fft) -> None:
+    while True:
+        frame_view = samples.look()
+        if frame_view is None:
+            time.sleep(0.001)
+            continue
+        frame = np.frombuffer(frame_view, dtype=np.float32).reshape((4096,))
+
+        fft_view = fft.look()
+        if fft_view is None:
+            time.sleep(0.001)
+            continue
+
+        spectrum = np.frombuffer(fft_view, dtype=np.complex64).reshape((2049,))
+        spectrum[:] = np.fft.rfft(frame).astype(np.complex64, copy=False)
+
+        samples.increment()
+        fft.increment()
+        return
+```
+
 ## Blocking And Backpressure
 
 By default, each reader participates in backpressure.
