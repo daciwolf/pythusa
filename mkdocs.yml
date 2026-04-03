@@ -9,6 +9,8 @@ theme:
 
 nav:
   - Home: index.md
+  - Showcase Demos: demos.md
+  - Under the Hood: internals.md
   - Pipeline API: pipeline.md
   - Runtime: runtime.md
   - Benchmarks: benchmarks.md

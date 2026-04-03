@@ -10,6 +10,11 @@ benchmarks/results/
 build/
 dist/
 *.egg-info/
+site/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
 AGENTS.md
 .codex/
 .pkg_tests
+imgui.ini

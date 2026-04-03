@@ -31,6 +31,12 @@ dependencies = [
   "psutil",
 ]
 
+[project.urls]
+Homepage = "https://github.com/daciwolf/pythusa"
+Documentation = "https://daciwolf.github.io/pythusa/"
+Repository = "https://github.com/daciwolf/pythusa"
+Issues = "https://github.com/daciwolf/pythusa/issues"
+
 [project.optional-dependencies]
 test = ["pytest>=8"]
 examples = ["joblib>=1.4", "matplotlib>=3.8"]

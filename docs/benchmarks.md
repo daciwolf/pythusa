@@ -42,6 +42,10 @@ Examples:
 - `benchmarks/results/dsp-latency-fft.json`
 - `benchmarks/results/rocket-latency.json`
 
+## Showcase Demo Benchmarks
+
+The two showcase demos in `examples/` double as end-to-end benchmarks for the full PYTHUSA stack. See the **[Showcase Demos](demos.md)** page for full results, architecture walkthroughs, and run commands.
+
 ## Measurement Notes
 
 - DSP suite latency fields are processing-side latencies from "frame ready" to "consumer finished".

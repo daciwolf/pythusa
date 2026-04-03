@@ -1,6 +1,6 @@
 # PYTHUSA
 
-PYTHUSA makes it easy to build high-throughput multiprocess Data Processing pipelines in Python. Through the use of shared memory, select operating system privatives and seperate python proccesses PYTHUSA allows for the effective bypassing of the GIL and cross platform compatabiliy in order to maximize latency, throughput and portability.
+PYTHUSA makes it easy to build high-throughput multiprocess data processing pipelines in Python. Through the use of shared memory, select operating system primitives and separate Python processes, PYTHUSA effectively bypasses the GIL with cross-platform compatibility to minimize latency, maximize throughput and ensure portability.
 
 You write the processing code; PYTHUSA handles zero-copy transport, process orchestration, and the throughput/latency behavior around it.
 
@@ -155,7 +155,31 @@ On Windows and other `spawn`-based multiprocessing environments, keep `pipe.star
 - `pipe.save(path)` and `pythusa.Pipeline.reconstruct(path)`: persist or restore pipeline declarations as TOML. Saved task callables must be importable top-level functions.
 - `pythusa.Manager`, `pythusa.RingSpec`, `pythusa.TaskSpec`, `pythusa.get_reader`, `pythusa.get_writer`, and `pythusa.get_event`: lower-level primitives for users who want direct ring and worker control.
 
-## Examples
+## Showcase Demos
+
+All benchmark numbers below were recorded on a **MacBook Air M2**.
+
+### FFT Pipeline Demo
+
+A multi-channel FFT pipeline that streams synthetic sensor data through shared-memory ring buffers into parallel FFT workers. Scales from ~20 Gbit/s with 2 generators to **~68 Gbit/s sustained** and **~140k FFT/s** across 49 signals with 7 generators -- at ~30% CPU utilization on the default configuration.
+
+```bash
+python examples/fft_pipeline_demo/main.py --headless --mode throughput --generators 7 --duration 10 --report-interval 1
+```
+
+See [examples/fft_pipeline_demo/README.md](./examples/fft_pipeline_demo/README.md) for the full topology, GUI mode, and benchmark details.
+
+### Stock Quant Demo
+
+A simulated L3 market microstructure replay desk pushing **~50 Gbit/s** aggregate market data throughput. Eight parallel generators stream synthetic 3-level order-book data through shared-memory ring buffers into per-symbol quant analytics workers computing 9 live microstructure metrics with end-to-end latency tracking and speedup against a serial baseline.
+
+```bash
+python examples/stock_quant_demo/main.py --headless --mode throughput --bank-gb 1 --duration 20 --report-interval 1
+```
+
+See [examples/stock_quant_demo/README.md](./examples/stock_quant_demo/README.md) for the universe, simulation model, quant metrics, and runtime profiles.
+
+## More Examples
 
 - `python examples/basic_workers.py` shows the raw `Manager` plus `SharedRingBuffer` path.
 - `python examples/engine_dsp_pipeline.py` shows a larger `Pipeline` graph with branching streams, monitoring, and plotting. Install `.[examples]` first.
