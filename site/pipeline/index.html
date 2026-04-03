@@ -6,7 +6,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         
         
-        <link rel="canonical" href="https://<your-github-username>.github.io/pythusa/pipeline/">
+        <link rel="canonical" href="https://daciwolf.github.io/pythusa/pipeline/">
         <link rel="shortcut icon" href="../img/favicon.ico">
         <title>Pipeline API - PYTHUSA</title>
         <link href="../css/bootstrap.min.css" rel="stylesheet">
@@ -38,10 +38,19 @@
                                 <a href=".." class="nav-link">Home</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../demos/" class="nav-link">Showcase Demos</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../internals/" class="nav-link">Under the Hood</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="./" class="nav-link active" aria-current="page">Pipeline API</a>
                             </li>
                             <li class="nav-item">
                                 <a href="../runtime/" class="nav-link">Runtime</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../benchmarks/" class="nav-link">Benchmarks</a>
                             </li>
                         </ul>
 
@@ -52,7 +61,7 @@
                             </a>
                         </li>
                             <li class="nav-item">
-                                <a rel="prev" href=".." class="nav-link">
+                                <a rel="prev" href="../internals/" class="nav-link">
                                     <i class="fa fa-arrow-left"></i> Previous
                                 </a>
                             </li>
@@ -62,7 +71,7 @@
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="https://github.com/<your-github-username>/pythusa/edit/master/docs/pipeline.md" class="nav-link">Edit on <your-github-username>/pythusa
+                                <a href="https://github.com/daciwolf/pythusa/edit/master/docs/pipeline.md" class="nav-link">Edit on daciwolf/pythusa
                                     </a>
                             </li>
                     </ul>
@@ -85,6 +94,66 @@
             
             <li class="nav-item" data-bs-level="1"><a href="#pipeline-api" class="nav-link">Pipeline API</a>
               <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#overview" class="nav-link">Overview</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#basic-workflow" class="nav-link">Basic Workflow</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#quick-example" class="nav-link">Quick Example</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#creating-a-pipeline" class="nav-link">Creating A Pipeline</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#streams" class="nav-link">Streams</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#events" class="nav-link">Events</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#tasks" class="nav-link">Tasks</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#controlled-tasks" class="nav-link">Controlled Tasks</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#stream-bindings-inside-tasks" class="nav-link">Stream Bindings Inside Tasks</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#blocking-and-backpressure" class="nav-link">Blocking And Backpressure</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#lifecycle-methods" class="nav-link">Lifecycle Methods</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#metrics-and-monitoring" class="nav-link">Metrics And Monitoring</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#saving-and-reconstructing-pipelines" class="nav-link">Saving And Reconstructing Pipelines</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#errors-and-current-limits" class="nav-link">Errors And Current Limits</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#when-to-drop-lower" class="nav-link">When To Drop Lower</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
               </ul>
             </li>
         </ul>
@@ -93,7 +162,467 @@
                     <div class="col-md-9" role="main">
 
 <h1 id="pipeline-api">Pipeline API</h1>
-<p>TODO</p></div>
+<p>The pipeline API is the main public entry point for building DSP graphs in PYTHUSA.
+If the low-level runtime is the set of motors, belts, and bearings, <code>Pipeline</code> is the factory plan that tells those parts what to build.</p>
+<h2 id="overview">Overview</h2>
+<p>A pipeline represents the flow of data and execution used by PYTHUSA.
+The simplest mental model is a factory line:</p>
+<ul>
+<li>tasks are the machines</li>
+<li>streams are the conveyor belts between machines</li>
+<li>events are control switches that tell certain machines when they may run</li>
+</ul>
+<p>Each task runs in its own worker process.
+Each stream is a fixed-shape, fixed-dtype shared-memory channel.
+When you compile the pipeline, PYTHUSA turns that declaration into live rings, events, and worker processes.</p>
+<p>Use <code>Pipeline</code> when you want:</p>
+<ul>
+<li>a declarative graph of your processing stages</li>
+<li>typed NumPy frame transport between processes</li>
+<li>automatic ring and worker setup</li>
+<li>a smaller public API than the raw <code>Manager</code> path</li>
+</ul>
+<p>Use the lower-level runtime directly only when you need custom orchestration or direct ring control.</p>
+<h2 id="basic-workflow">Basic Workflow</h2>
+<p>Most pipelines follow the same sequence:</p>
+<ol>
+<li>Create a <code>Pipeline</code>.</li>
+<li>Declare one or more streams with <code>add_stream(...)</code>.</li>
+<li>Declare any control events with <code>add_event(...)</code>.</li>
+<li>Register tasks with <code>add_task(...)</code>.</li>
+<li>Start the pipeline with <code>start()</code> or <code>run()</code>.</li>
+<li>Stop, join, or close it explicitly, or use it as a context manager.</li>
+</ol>
+<p>In factory-line terms:</p>
+<ul>
+<li>you name the machines</li>
+<li>you define the conveyor belts between them</li>
+<li>you wire any start/stop switches</li>
+<li>then you turn the line on</li>
+</ul>
+<h2 id="quick-example">Quick Example</h2>
+<pre><code class="language-python">from __future__ import annotations
+
+import time
+import numpy as np
+import pythusa
+
+
+FRAME = np.arange(8, dtype=np.float32)
+
+
+def source(samples) -&gt; None:
+    samples.write(FRAME)
+
+
+def scale(samples, doubled) -&gt; None:
+    while True:
+        frame = samples.read()
+        if frame is None:
+            time.sleep(0.001)
+            continue
+        doubled.write((frame * 2.0).astype(np.float32, copy=False))
+        return
+
+
+def sink(doubled) -&gt; None:
+    while True:
+        frame = doubled.read()
+        if frame is None:
+            time.sleep(0.001)
+            continue
+        print(frame)
+        return
+
+
+def main() -&gt; None:
+    with pythusa.Pipeline(&quot;demo&quot;) as pipe:
+        pipe.add_stream(&quot;samples&quot;, shape=(8,), dtype=np.float32)
+        pipe.add_stream(&quot;doubled&quot;, shape=(8,), dtype=np.float32)
+
+        pipe.add_task(&quot;source&quot;, fn=source, writes={&quot;samples&quot;: &quot;samples&quot;})
+        pipe.add_task(
+            &quot;scale&quot;,
+            fn=scale,
+            reads={&quot;samples&quot;: &quot;samples&quot;},
+            writes={&quot;doubled&quot;: &quot;doubled&quot;},
+        )
+        pipe.add_task(&quot;sink&quot;, fn=sink, reads={&quot;doubled&quot;: &quot;doubled&quot;})
+
+        pipe.run()
+
+
+if __name__ == &quot;__main__&quot;:
+    main()
+</code></pre>
+<p>This is a three-machine line:</p>
+<ul>
+<li><code>source</code> publishes frames</li>
+<li><code>scale</code> transforms them</li>
+<li><code>sink</code> consumes the result</li>
+</ul>
+<p>On Windows and other <code>spawn</code>-based multiprocessing environments, <code>pipe.start()</code> and <code>pipe.run()</code> must live behind an <code>if __name__ == "__main__":</code> guard or the child process will re-import the module and try to create the same shared-memory rings again. This does not change pipeline semantics on Linux or macOS; it is simply the correct portable <code>multiprocessing</code> pattern for standalone scripts.</p>
+<h2 id="creating-a-pipeline">Creating A Pipeline</h2>
+<p>Create a pipeline by naming it:</p>
+<pre><code class="language-python">pipe = pythusa.Pipeline(&quot;radar&quot;)
+</code></pre>
+<p>The pipeline owns a runtime <code>Manager</code> internally and is the lifecycle owner for the graph you declare.
+It can be used directly or as a context manager:</p>
+<pre><code class="language-python">with pythusa.Pipeline(&quot;radar&quot;) as pipe:
+    ...
+</code></pre>
+<p>The context-manager form is the recommended default because it gives deterministic cleanup.</p>
+<h2 id="streams">Streams</h2>
+<p>Declare a stream with:</p>
+<pre><code class="language-python">pipe.add_stream(
+    &quot;samples&quot;,
+    shape=(4096,),
+    dtype=np.float32,
+    frames=64,
+    cache_align=True,
+)
+</code></pre>
+<p>Parameters:</p>
+<ul>
+<li><code>name</code>: unique stream name within the pipeline</li>
+<li><code>shape</code>: frame shape passed to task bindings</li>
+<li><code>dtype</code>: NumPy dtype for one frame</li>
+<li><code>frames</code>: number of frames to allocate in the backing ring buffer</li>
+<li><code>cache_align</code>: whether compile-time ring sizing should apply cache-line alignment</li>
+</ul>
+<p>Conceptually, a stream is the conveyor belt between two machines.
+At compile time, that declaration becomes a shared-memory ring sized for 32 frames by default, or the explicit <code>frames=</code> value you provide.</p>
+<p>Current rules:</p>
+<ul>
+<li>one stream has exactly one writer task</li>
+<li>one stream may have zero or more reader tasks at declaration time</li>
+<li>compile requires each stream to have at least one reader</li>
+</ul>
+<p>If you register the same stream name twice, <code>add_stream(...)</code> raises <code>ValueError</code>.</p>
+<h2 id="events">Events</h2>
+<p>Declare an event with:</p>
+<pre><code class="language-python">pipe.add_event(&quot;shutdown&quot;)
+pipe.add_event(&quot;armed&quot;, initial_state=True)
+</code></pre>
+<p>Events are process-shared control primitives.
+In the factory-line analogy, they are the switches and gates that tell machines whether they may run.</p>
+<p>Current guidance:</p>
+<ul>
+<li>many signalers is acceptable</li>
+<li>one consumer-side owner is the intended pattern</li>
+<li>many consumers on one event are discouraged</li>
+</ul>
+<p>If an event is bound into more than two tasks, compile emits a warning because that usually indicates a design that should be split into separate events.</p>
+<h2 id="tasks">Tasks</h2>
+<p>Register a task with:</p>
+<pre><code class="language-python">pipe.add_task(
+    &quot;fft_worker&quot;,
+    fn=fft_worker,
+    reads={&quot;samples&quot;: &quot;raw_adc&quot;},
+    writes={&quot;fft&quot;: &quot;spectra&quot;},
+    events={&quot;shutdown&quot;: &quot;shutdown&quot;},
+)
+</code></pre>
+<p>Parameters:</p>
+<ul>
+<li><code>name</code>: unique task name within the pipeline</li>
+<li><code>fn</code>: callable that runs in the worker process</li>
+<li><code>reads</code>: mapping from local function argument names to stream names</li>
+<li><code>writes</code>: mapping from local function argument names to stream names</li>
+<li><code>events</code>: mapping from local function argument names to event names</li>
+</ul>
+<p>The mapping direction matters:</p>
+<ul>
+<li>keys are the local argument names seen by the function</li>
+<li>values are the real stream or event names registered on the pipeline</li>
+</ul>
+<p>So this:</p>
+<pre><code class="language-python">reads={&quot;samples&quot;: &quot;raw_adc&quot;}
+</code></pre>
+<p>means:</p>
+<ul>
+<li>the pipeline stream is named <code>raw_adc</code></li>
+<li>the task function receives it as <code>samples=...</code></li>
+</ul>
+<p>That lets reusable task functions stay stable even when pipeline names change.</p>
+<h3 id="decorator-form">Decorator Form</h3>
+<p><code>add_task(...)</code> also supports decorator registration for plain tasks:</p>
+<pre><code class="language-python">@pipe.add_task(
+    &quot;sink&quot;,
+    reads={&quot;samples&quot;: &quot;samples&quot;},
+)
+def sink(samples) -&gt; None:
+    ...
+</code></pre>
+<p>This decorator form is only for plain <code>add_task(...)</code>.
+Controlled-task registration uses explicit <code>fn=...</code>.</p>
+<h2 id="controlled-tasks">Controlled Tasks</h2>
+<p>Two controlled task forms are available:</p>
+<ul>
+<li><code>pipe.add_task.switchable(...)</code></li>
+<li><code>pipe.add_task.toggleable(...)</code></li>
+<li><code>pipe.add_task.terminator(...)</code></li>
+</ul>
+<p>Example:</p>
+<pre><code class="language-python">def flush_buffer(output) -&gt; None:
+    output.write(np.zeros(8, dtype=np.float32))
+
+
+pipe.add_event(&quot;flush&quot;)
+pipe.add_stream(&quot;output&quot;, shape=(8,), dtype=np.float32)
+
+pipe.add_task.toggleable(
+    &quot;flush_once&quot;,
+    activate_on=&quot;flush&quot;,
+    fn=flush_buffer,
+    writes={&quot;output&quot;: &quot;output&quot;},
+    events={&quot;flush&quot;: &quot;flush&quot;},
+)
+</code></pre>
+<p>Behavior:</p>
+<ul>
+<li><code>switchable</code>: waits for the event, then keeps rerunning without resetting it</li>
+<li><code>toggleable</code>: waits for the event, resets it, then runs once per activation</li>
+</ul>
+<p>Rules:</p>
+<ul>
+<li><code>activate_on</code> must be one of the task's bound event names</li>
+<li>controlled tasks are event-driven wrappers around the task function</li>
+<li>the control event is not passed through to the task function itself</li>
+</ul>
+<p>If <code>activate_on</code> is missing from the task's event bindings, registration raises <code>ValueError</code>.</p>
+<p><code>terminator(...)</code> is a built-in no-op reader task. It binds one or more streams, marks those readers inactive, and then returns. Use it when a stream needs a reader for compilation but has no real downstream consumer.</p>
+<h2 id="stream-bindings-inside-tasks">Stream Bindings Inside Tasks</h2>
+<p>At runtime, tasks do not receive raw arrays directly.
+They receive stream binding objects.</p>
+<p>Reader bindings support:</p>
+<ul>
+<li><code>read() -&gt; np.ndarray | None</code></li>
+<li><code>read_into(out) -&gt; bool</code></li>
+<li><code>look() -&gt; memoryview | None</code></li>
+<li><code>increment()</code></li>
+<li><code>set_blocking(bool)</code></li>
+<li><code>is_blocking()</code></li>
+<li><code>.raw</code></li>
+<li><code>.ring</code></li>
+</ul>
+<p>Writer bindings support:</p>
+<ul>
+<li><code>write(array) -&gt; bool</code></li>
+<li><code>look() -&gt; memoryview | None</code></li>
+<li><code>increment()</code></li>
+<li><code>.raw</code></li>
+<li><code>.ring</code></li>
+</ul>
+<p>Examples:</p>
+<p><code>read()</code>:</p>
+<pre><code class="language-python">def worker(samples, fft) -&gt; None:
+    while True:
+        frame = samples.read()
+        if frame is None:
+            time.sleep(0.001)
+            continue
+        spectrum = np.fft.rfft(frame).astype(np.complex64, copy=False)
+        if fft.write(spectrum):
+            return
+</code></pre>
+<p><code>read_into(out)</code>:</p>
+<pre><code class="language-python">def worker(samples, fft) -&gt; None:
+    frame = np.empty((4096,), dtype=np.float32)
+    while True:
+        if not samples.read_into(frame):
+            time.sleep(0.001)
+            continue
+        spectrum = np.fft.rfft(frame).astype(np.complex64, copy=False)
+        if fft.write(spectrum):
+            return
+</code></pre>
+<p><code>look()</code> and <code>increment()</code> on the reader:</p>
+<pre><code class="language-python">def worker(samples, fft) -&gt; None:
+    while True:
+        frame_view = samples.look()
+        if frame_view is None:
+            time.sleep(0.001)
+            continue
+        frame = np.frombuffer(frame_view, dtype=np.float32).reshape((4096,))
+        spectrum = np.fft.rfft(frame).astype(np.complex64, copy=False)
+        samples.increment()
+        if fft.write(spectrum):
+            return
+</code></pre>
+<p><code>set_blocking()</code> and <code>is_blocking()</code>:</p>
+<pre><code class="language-python">def worker(samples) -&gt; None:
+    samples.set_blocking(False)
+    if not samples.is_blocking():
+        latest = samples.look()
+        if latest is not None:
+            print(np.frombuffer(latest, dtype=np.float32))
+            samples.increment()
+    samples.set_blocking(True)
+</code></pre>
+<p><code>write()</code>:</p>
+<pre><code class="language-python">def worker(samples, fft) -&gt; None:
+    frame = samples.read()
+    if frame is None:
+        return
+    spectrum = np.fft.rfft(frame).astype(np.complex64, copy=False)
+    fft.write(spectrum)
+</code></pre>
+<p><code>look()</code> and <code>increment()</code> on the writer:</p>
+<pre><code class="language-python">def worker(samples, fft) -&gt; None:
+    frame = samples.read()
+    if frame is None:
+        return
+    fft_view = fft.look()
+    if fft_view is None:
+        return
+    spectrum = np.frombuffer(fft_view, dtype=np.complex64).reshape((2049,))
+    spectrum[:] = np.fft.rfft(frame).astype(np.complex64, copy=False)
+    fft.increment()
+</code></pre>
+<p>Notes:</p>
+<ul>
+<li><code>read()</code> returns an owned NumPy array copy</li>
+<li><code>read_into(...)</code> avoids that allocation by filling a provided array</li>
+<li><code>look()</code> returns a zero-copy memoryview for the next contiguous frame and does not advance the reader</li>
+<li>call <code>increment()</code> after you finish using the view from <code>look()</code></li>
+<li><code>look()</code> returns <code>None</code> when the next frame is not available or is wrapped across the ring boundary</li>
+<li><code>writer.look()</code> returns a zero-copy writable memoryview for the next contiguous frame and does not advance the writer</li>
+<li>call <code>writer.increment()</code> after you fill the view from <code>writer.look()</code></li>
+<li><code>writer.look()</code> returns <code>None</code> when the next frame would wrap across the ring boundary</li>
+<li><code>write(...)</code> validates shape and dtype before publishing</li>
+<li><code>.raw</code> and <code>.ring</code> expose the underlying shared-memory ring for direct low-level access</li>
+</ul>
+<h2 id="blocking-and-backpressure">Blocking And Backpressure</h2>
+<p>Readers participate in writer backpressure by default.
+That is usually what you want.</p>
+<p>If you need a reader to stop holding writers back:</p>
+<pre><code class="language-python">samples.set_blocking(False)
+</code></pre>
+<p>When a reader is made non-blocking:</p>
+<ul>
+<li>it is marked inactive</li>
+<li>writers stop treating it as a backpressure participant</li>
+</ul>
+<p>When it is re-enabled:</p>
+<pre><code class="language-python">samples.set_blocking(True)
+</code></pre>
+<p>the reader jumps to the current writer position.
+Unread backlog is discarded rather than replayed.</p>
+<p>This is an advanced control.
+It is useful for "latest frame only" style consumers, but it is not lossless.</p>
+<h2 id="lifecycle-methods">Lifecycle Methods</h2>
+<p>The main lifecycle methods are:</p>
+<ul>
+<li><code>compile()</code></li>
+<li><code>start()</code></li>
+<li><code>run()</code></li>
+<li><code>stop()</code></li>
+<li><code>join(timeout=None)</code></li>
+<li><code>close()</code></li>
+</ul>
+<p>Typical usage:</p>
+<pre><code class="language-python">with pythusa.Pipeline(&quot;demo&quot;) as pipe:
+    ...
+    pipe.start()
+    pipe.join()
+</code></pre>
+<p>or, for short-running pipelines:</p>
+<pre><code class="language-python">with pythusa.Pipeline(&quot;demo&quot;) as pipe:
+    ...
+    pipe.run()
+</code></pre>
+<p>Method behavior:</p>
+<ul>
+<li><code>compile()</code>: validates the graph and registers runtime objects</li>
+<li><code>start()</code>: compiles if needed, then starts tasks in reverse topological order</li>
+<li><code>run()</code>: convenience method for <code>start()</code> followed by <code>join()</code></li>
+<li><code>stop()</code>: requests shutdown of running worker processes</li>
+<li><code>join()</code>: waits for worker processes to exit</li>
+<li><code>close()</code>: stops, joins, and closes the owned runtime manager</li>
+</ul>
+<p>Current lifecycle model:</p>
+<ul>
+<li>a pipeline instance is compile-once</li>
+<li>a pipeline instance is start-once</li>
+<li><code>compile()</code> twice raises <code>RuntimeError</code></li>
+<li><code>start()</code> twice raises <code>RuntimeError</code></li>
+<li><code>close()</code> is idempotent</li>
+</ul>
+<h2 id="metrics-and-monitoring">Metrics And Monitoring</h2>
+<p>Start monitoring with:</p>
+<pre><code class="language-python">pipe.start_monitor(interval_s=0.05)
+</code></pre>
+<p>Read metrics with:</p>
+<pre><code class="language-python">all_metrics = pipe.metrics()
+worker_metrics = pipe.metrics(&quot;worker&quot;)
+</code></pre>
+<p>Metrics expose snapshots of:</p>
+<ul>
+<li>PID</li>
+<li>CPU percent</li>
+<li>RSS memory</li>
+<li>nice level</li>
+<li>ring pressure</li>
+</ul>
+<p>Use this for operational visibility, not as a hard real-time timing guarantee.</p>
+<p>If you ask for an unknown task name, <code>metrics(task_name)</code> raises <code>KeyError</code>.</p>
+<h2 id="saving-and-reconstructing-pipelines">Saving And Reconstructing Pipelines</h2>
+<p>Pipelines can be serialized to TOML:</p>
+<pre><code class="language-python">pipe.save(&quot;radar.toml&quot;)
+restored = pythusa.Pipeline.reconstruct(&quot;radar.toml&quot;)
+</code></pre>
+<p>This persists the declaration, not a live runtime.</p>
+<p>Saved content includes:</p>
+<ul>
+<li>pipeline name</li>
+<li>stream declarations</li>
+<li>event declarations</li>
+<li>task bindings</li>
+<li>controlled-task metadata</li>
+<li>callable module and qualified name</li>
+</ul>
+<p>Important limitation:</p>
+<ul>
+<li>saved task callables must be importable top-level functions</li>
+<li>lambdas, nested functions, and other non-importable callables are not supported</li>
+</ul>
+<h2 id="errors-and-current-limits">Errors And Current Limits</h2>
+<p>PYTHUSA v0 is intentionally narrow.
+The constraints are there to keep the execution model explicit.</p>
+<p>Current unsupported or constrained patterns:</p>
+<ul>
+<li>cyclic task graphs are not supported</li>
+<li>multiple writers to one stream are not supported</li>
+<li>arbitrary Python objects as stream payloads are not supported</li>
+<li>variable-shape frames on one stream are not supported</li>
+<li>automatic fan-in coordination is not provided</li>
+<li>many independent consumers on one event are not the intended event model</li>
+</ul>
+<p>Some important consequences:</p>
+<ul>
+<li>if a task reads from multiple input streams, that task is responsible for deciding how to synchronize them</li>
+<li>if two upstream producers run at different rates, the downstream task must define the join logic</li>
+<li>if you need counted per-activation semantics, design the event ownership carefully instead of treating one event like a broadcast queue</li>
+</ul>
+<p>Common failure modes:</p>
+<ul>
+<li>duplicate stream, task, or event names raise <code>ValueError</code></li>
+<li>invalid task bindings raise <code>ValueError</code></li>
+<li>compile-time topology problems raise <code>ValueError</code></li>
+<li>trying to compile or start the same pipeline twice raises <code>RuntimeError</code></li>
+</ul>
+<h2 id="when-to-drop-lower">When To Drop Lower</h2>
+<p><code>Pipeline</code> should be the default.
+Drop to the low-level runtime only when you specifically need:</p>
+<ul>
+<li>direct <code>Manager</code> control</li>
+<li>manual ring construction</li>
+<li>custom bootstrap behavior</li>
+<li>experiments that depend on raw ring semantics</li>
+</ul>
+<p>If your application still fits the factory-line model of machines plus conveyor belts, stay with <code>Pipeline</code>.
+If you need to rewire the motors themselves, use the runtime layer.</p></div>
             </div>
         </div>
 

@@ -1,6 +1,6 @@
 # Showcase Demos
 
-## 68 Gbit/s FFT signal payload. 50 Gbit/s market data throughput. Pure Python. MacBook Air M2.
+## 73 Gbit/s FFT signal payload. 50 Gbit/s market data throughput. Pure Python. MacBook Air M2.
 
 No C extensions. No Cython. Just `multiprocessing.shared_memory` and PYTHUSA.
 
@@ -12,9 +12,9 @@ All commands below assume you are in the `pythusa/` project root with the packag
 
 ## FFT Pipeline Demo
 
-**~68 Gbit/s sustained FFT signal payload. ~140,000 FFT/s across 49 signals. Pure Python.**
+**~73 Gbit/s sustained FFT signal payload. ~140,000 FFT/s across 49 signals. Pure Python.**
 
-A multi-channel FFT pipeline that streams synthetic sensor data through shared-memory ring buffers into parallel FFT workers. The default 2-generator configuration hits ~20 Gbit/s at around 30% CPU utilization -- leaving massive headroom. Crank it to 7 generators and the pipeline delivers **68 Gbit/s** of FFT input payload, enough to service roughly **17,000 NI USB-6423-class DAQ channels** simultaneously.
+A multi-channel FFT pipeline that streams synthetic sensor data through shared-memory ring buffers into parallel FFT workers. The default 2-generator configuration hits ~21 Gbit/s at around 30% CPU utilization -- leaving massive headroom. Crank it to 7 generators and the pipeline delivers **73 Gbit/s** of FFT input payload, enough to service roughly **17,000 NI USB-6423-class DAQ channels** simultaneously.
 
 ![FFT Pipeline Demo -- GUI](assets/fft-pipeline-gui.png)
 *ImGui operator desk: live signal traces, on-demand FFT extraction, and per-channel throughput telemetry.*
@@ -27,9 +27,9 @@ A multi-channel FFT pipeline that streams synthetic sensor data through shared-m
 
 | Mode | Generators | Signals | FFT window | Throughput | FFT rate |
 | --- | --- | --- | --- | --- | --- |
-| `throughput` | 2 (default) | 14 | 8192 samples | ~20 Gbit/s | ~40k FFT/s |
-| `throughput` | 7 | 49 | 8192 samples | **~68 Gbit/s** | **~140k FFT/s** |
-| `latency` | 2 (default) | 14 | 1024 samples | ~5.4 Gbit/s | ~88k FFT/s |
+| `throughput` | 2 (default) | 14 | 8192 samples | ~21 Gbit/s | ~40k FFT/s |
+| `throughput` | 7 | 49 | 8192 samples | **~73 Gbit/s** | **~140k FFT/s** |
+| `latency` | 2 (default) | 14 | 1024 samples | ~5.8 Gbit/s | ~88k FFT/s |
 
 Throughput is **FFT input signal payload** -- the data consumed by the analysis path, not total DRAM bandwidth or temporary array traffic. Scaling from 2 to 7 generators yields a **3.4x throughput increase** by filling CPU headroom that the default configuration leaves unused.
 
@@ -55,10 +55,10 @@ Throughput is **FFT input signal payload** -- the data consumed by the analysis 
 # GUI mode -- live dashboard with signal plots and FFT arm buttons
 python examples/fft_pipeline_demo/main.py
 
-# Headless throughput (default 2 generators, ~20 Gbit/s)
+# Headless throughput (default 2 generators, ~21 Gbit/s)
 python examples/fft_pipeline_demo/main.py --headless --mode throughput --duration 10 --report-interval 1
 
-# Scaled-up throughput (7 generators, ~68 Gbit/s)
+# Scaled-up throughput (7 generators, ~73 Gbit/s)
 python examples/fft_pipeline_demo/main.py --headless --mode throughput --generators 7 --duration 10 --report-interval 1
 
 # Latency mode (1024-sample FFT window, ~88k FFT/s)

@@ -5,7 +5,7 @@ It is built for workloads where you want multiple Python processes moving numeri
 
 ![PYTHUSA simple dataflow](assets/simple-dataflow.svg)
 
-**[Showcase Demos](demos.md)** -- FFT pipeline hitting **~68 Gbit/s** across 49 signals and a market microstructure replay desk pushing **~50 Gbit/s** across 8 symbols with live quant analytics. No C extensions. Performance numbers, architecture diagrams, and run commands.
+**[Showcase Demos](demos.md)** -- FFT pipeline hitting **~73 Gbit/s** across 49 signals and a market microstructure replay desk pushing **~50 Gbit/s** across 8 symbols with live quant analytics. No C extensions. Performance numbers, architecture diagrams, and run commands.
 
 ## What PYTHUSA Is
 
@@ -112,7 +112,7 @@ Use them when a task should react to a signal instead of running unconditionally
 
 ## What To Read Next
 
-- Read [Under the Hood](internals.md) for a guided walkthrough of the hot path -- the code behind 68 Gbit/s.
+- Read [Under the Hood](internals.md) for a guided walkthrough of the hot path -- the code behind 73 Gbit/s.
 - Read [Pipeline API](pipeline.md) for the high-level programming model.
 - Read [Runtime](runtime.md) if you need to understand ring buffers, task bootstrap, or raw ring access.
 - Read [Benchmarks](benchmarks.md) if you want to compare throughput and latency modes.
@@ -165,7 +165,7 @@ python -m pip install -e ".[benchmarks]"
 
 See **[Showcase Demos](demos.md)** for the two flagship examples with full architecture walkthroughs, performance numbers, and run commands:
 
-- **FFT Pipeline Demo** -- ~68 Gbit/s sustained, ~140k FFT/s across 49 signals with 7 generators.
+- **FFT Pipeline Demo** -- ~73 Gbit/s sustained, ~140k FFT/s across 49 signals with 7 generators.
 - **Stock Quant Demo** -- 8-symbol L3 order-book replay with live quant analytics, latency tracking, and serial-baseline speedup.
 
 Smaller standalone scripts:

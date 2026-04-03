@@ -6,7 +6,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         
         
-        <link rel="canonical" href="https://<your-github-username>.github.io/pythusa/runtime/">
+        <link rel="canonical" href="https://daciwolf.github.io/pythusa/runtime/">
         <link rel="shortcut icon" href="../img/favicon.ico">
         <title>Runtime - PYTHUSA</title>
         <link href="../css/bootstrap.min.css" rel="stylesheet">
@@ -38,10 +38,19 @@
                                 <a href=".." class="nav-link">Home</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../demos/" class="nav-link">Showcase Demos</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../internals/" class="nav-link">Under the Hood</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../pipeline/" class="nav-link">Pipeline API</a>
                             </li>
                             <li class="nav-item">
                                 <a href="./" class="nav-link active" aria-current="page">Runtime</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../benchmarks/" class="nav-link">Benchmarks</a>
                             </li>
                         </ul>
 
@@ -57,12 +66,12 @@
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a rel="next" class="nav-link disabled">
+                                <a rel="next" href="../benchmarks/" class="nav-link">
                                     Next <i class="fa fa-arrow-right"></i>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="https://github.com/<your-github-username>/pythusa/edit/master/docs/runtime.md" class="nav-link">Edit on <your-github-username>/pythusa
+                                <a href="https://github.com/daciwolf/pythusa/edit/master/docs/runtime.md" class="nav-link">Edit on daciwolf/pythusa
                                     </a>
                             </li>
                     </ul>
@@ -85,6 +94,62 @@
             
             <li class="nav-item" data-bs-level="1"><a href="#runtime" class="nav-link">Runtime</a>
               <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#what-runtime-means" class="nav-link">What Runtime Means</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#runtime-object-model" class="nav-link">Runtime Object Model</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#how-ring-buffers-work-under-the-hood" class="nav-link">How Ring Buffers Work Under The Hood</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#how-tasks-work-under-the-hood" class="nav-link">How Tasks Work Under The Hood</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#worker-execution-model" class="nav-link">Worker Execution Model</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#minimal-raw-runtime-example" class="nav-link">Minimal Raw Runtime Example</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#raw-ring-api" class="nav-link">Raw Ring API</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#raw-ring-access-from-pipeline" class="nav-link">Raw Ring Access From Pipeline</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#convenience-stream-bindings" class="nav-link">Convenience Stream Bindings</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#blocking-and-backpressure" class="nav-link">Blocking And Backpressure</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#events-and-controlled-tasks" class="nav-link">Events And Controlled Tasks</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#monitoring-and-metrics" class="nav-link">Monitoring And Metrics</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#errors-and-current-limits" class="nav-link">Errors And Current Limits</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#when-to-bypass-pipeline" class="nav-link">When To Bypass Pipeline</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
               </ul>
             </li>
         </ul>
@@ -93,7 +158,527 @@
                     <div class="col-md-9" role="main">
 
 <h1 id="runtime">Runtime</h1>
-<p>TODO</p></div>
+<p>The runtime is the lower-level execution layer underneath <code>Pipeline</code>.
+If <code>Pipeline</code> is the factory plan, the runtime is the actual machinery: the rings, worker processes, bootstrap logic, and synchronization objects that make the line move.</p>
+<p>Most users should start with <code>Pipeline</code>.
+Drop to the runtime only when you need direct control over ring sizing, task startup order, raw shared-memory access, or custom orchestration.</p>
+<h2 id="what-runtime-means">What Runtime Means</h2>
+<p>At the runtime level, PYTHUSA is built from a small set of explicit parts:</p>
+<ul>
+<li><code>Manager</code>: owns live rings, events, and worker processes</li>
+<li><code>RingSpec</code>: describes one shared-memory ring</li>
+<li><code>TaskSpec</code>: describes one worker task</li>
+<li><code>EventSpec</code>: describes one process-shared event</li>
+<li><code>SharedRingBuffer</code>: the actual shared-memory transport object</li>
+<li><code>WorkerEvent</code>: the actual process-shared event object</li>
+</ul>
+<p><code>Pipeline.compile()</code> eventually creates these lower-level objects for you.
+Using the runtime directly means building them yourself.</p>
+<p>The tradeoff is simple:</p>
+<ul>
+<li><code>Pipeline</code> is smaller, safer, and easier to reason about</li>
+<li>the runtime is more explicit and more flexible, but easier to misuse</li>
+</ul>
+<h2 id="runtime-object-model">Runtime Object Model</h2>
+<h3 id="manager"><code>Manager</code></h3>
+<p><code>Manager</code> is the runtime owner.
+It keeps strong references to:</p>
+<ul>
+<li>live creator-side ring handles</li>
+<li>live event objects</li>
+<li>registered task specs</li>
+<li>spawned worker processes</li>
+<li>sampled process metrics</li>
+</ul>
+<p>At a high level, <code>Manager</code> does four things:</p>
+<ol>
+<li>register rings, events, and tasks</li>
+<li>assign reader slots to task processes</li>
+<li>build a task bootstrap for each process</li>
+<li>start, stop, join, and monitor those processes</li>
+</ol>
+<p>Unlike <code>Pipeline</code>, <code>Manager</code> is imperative.
+You register objects and start named tasks yourself.</p>
+<h3 id="ringspec"><code>RingSpec</code></h3>
+<p><code>RingSpec</code> is pure configuration for one ring buffer:</p>
+<ul>
+<li><code>name</code></li>
+<li><code>size</code> in bytes</li>
+<li><code>num_readers</code></li>
+<li><code>cache_align</code></li>
+<li><code>cache_size</code></li>
+</ul>
+<p>Important: at the runtime level, ring size is always in bytes.
+The raw ring does not know about NumPy frame shape or dtype beyond whatever the caller chooses to interpret.</p>
+<h3 id="taskspec"><code>TaskSpec</code></h3>
+<p><code>TaskSpec</code> declares one worker process:</p>
+<ul>
+<li><code>name</code></li>
+<li><code>fn</code></li>
+<li><code>reading_rings</code></li>
+<li><code>writing_rings</code></li>
+<li><code>events</code></li>
+<li><code>args</code></li>
+<li><code>kwargs</code></li>
+</ul>
+<p>The runtime starts one <code>TaskSpec</code> per process.
+The task callable is invoked exactly once.
+If a task should run continuously, the loop belongs inside the task function.</p>
+<h3 id="eventspec"><code>EventSpec</code></h3>
+<p><code>EventSpec</code> is pure configuration:</p>
+<ul>
+<li><code>name</code></li>
+<li><code>initial_state</code></li>
+</ul>
+<p>It tells the manager to create a named <code>WorkerEvent</code>.</p>
+<h3 id="sharedringbuffer"><code>SharedRingBuffer</code></h3>
+<p><code>SharedRingBuffer</code> is the actual shared-memory transport.
+It is a fixed-size byte ring with one writer position and one reader position per registered reader slot.</p>
+<p>The ring is concerned only with bytes.
+Shape and dtype interpretation are the caller's responsibility.</p>
+<h3 id="workerevent"><code>WorkerEvent</code></h3>
+<p><code>WorkerEvent</code> is the runtime control primitive used across processes.
+It combines:</p>
+<ul>
+<li>a process-shared <code>Event</code> for blocking wakeup</li>
+<li>a process-shared <code>Semaphore</code> for counted activations</li>
+<li>a shared counter and lock to keep state consistent</li>
+</ul>
+<p>That makes it more than a plain binary flag.</p>
+<h2 id="how-ring-buffers-work-under-the-hood">How Ring Buffers Work Under The Hood</h2>
+<p><code>SharedRingBuffer</code> stores two things in one shared-memory block:</p>
+<ul>
+<li>a header</li>
+<li>the ring payload bytes</li>
+</ul>
+<p>The header tracks:</p>
+<ul>
+<li>logical ring size</li>
+<li>pressure</li>
+<li>dropped size</li>
+<li>global write position</li>
+<li>computed writable capacity</li>
+<li>number of readers</li>
+<li>per-reader position, active flag, and last-seen slot data</li>
+</ul>
+<p>Conceptually:</p>
+<ul>
+<li>the writer only advances the write position</li>
+<li>each reader advances its own reader position</li>
+<li>writable capacity is determined by the slowest active reader</li>
+</ul>
+<p>That last point is the backpressure rule.
+If one active reader falls behind, it limits how far the writer may advance.</p>
+<h3 id="writer-path">Writer Path</h3>
+<p>The writer:</p>
+<ol>
+<li>asks how many bytes are writable</li>
+<li>obtains one or two memoryviews into the ring payload</li>
+<li>copies bytes into those views</li>
+<li>advances the write position</li>
+</ol>
+<p>If there is not enough room, the write fails and returns <code>0</code>.
+The caller decides whether to retry, wait, or drop.</p>
+<h3 id="reader-path">Reader Path</h3>
+<p>The reader:</p>
+<ol>
+<li>checks how many bytes are readable</li>
+<li>obtains one or two memoryviews into the ring payload</li>
+<li>copies or views the readable bytes</li>
+<li>advances its own reader position</li>
+</ol>
+<p>Each reader has its own slot.
+Readers do not contend by rewriting a shared reader cursor.</p>
+<h3 id="wrap-around">Wrap-Around</h3>
+<p>If a read or write spans the end of the payload, the ring exposes two views:</p>
+<ul>
+<li>one to the tail of the buffer</li>
+<li>one to the beginning of the buffer</li>
+</ul>
+<p>The helper methods handle this for you.</p>
+<h3 id="pressure">Pressure</h3>
+<p>Ring pressure is the complement of writable space, expressed as a percentage.
+If little writable space remains, pressure rises.
+The monitor thread uses this to report stalled or overloaded stages.</p>
+<h2 id="how-tasks-work-under-the-hood">How Tasks Work Under The Hood</h2>
+<p>The task runtime path is:</p>
+<ol>
+<li>you register a <code>TaskSpec</code></li>
+<li><code>Manager.start(name)</code> validates the task</li>
+<li>the manager assigns reader slots for the task's input rings</li>
+<li>it builds a <code>TaskBootstrap</code></li>
+<li>a child process is spawned with that bootstrap as the target</li>
+<li>the child opens its reader and writer ring handles</li>
+<li>the child enters those ring handles as context managers</li>
+<li>worker-local context is installed</li>
+<li>the worker callable is invoked exactly once</li>
+</ol>
+<p>The callable itself owns its loop.
+The runtime does not inject a scheduler around normal tasks.</p>
+<p>This is an important design point:</p>
+<ul>
+<li>the runtime provides transport and process orchestration</li>
+<li>task behavior still belongs to the task function</li>
+</ul>
+<h2 id="worker-execution-model">Worker Execution Model</h2>
+<p>The worker process sees the runtime through module-level context.
+Inside a worker, helpers like:</p>
+<ul>
+<li><code>pythusa.get_reader(...)</code></li>
+<li><code>pythusa.get_writer(...)</code></li>
+<li><code>pythusa.get_event(...)</code></li>
+</ul>
+<p>resolve objects that were installed by bootstrap.</p>
+<p>That installation happens once per child process.
+It is safe because each worker is its own process with its own module state.</p>
+<p>The bootstrap also enters every ring under an <code>ExitStack</code>, so reader activation and ring cleanup follow the ring object's context-manager lifecycle.</p>
+<p>One platform note:</p>
+<ul>
+<li>on POSIX, <code>SIGTERM</code> can exit a worker cleanly through the installed handler</li>
+<li>on Windows, process termination is effectively hard termination, so you should prefer normal task completion and explicit lifecycle management where possible</li>
+</ul>
+<h2 id="minimal-raw-runtime-example">Minimal Raw Runtime Example</h2>
+<p>This is the simplest end-to-end example using <code>Manager</code>, <code>RingSpec</code>, and <code>TaskSpec</code> directly.</p>
+<pre><code class="language-python">from __future__ import annotations
+
+import time
+import numpy as np
+import pythusa
+
+
+FRAME = np.arange(8, dtype=np.float32)
+FRAME_NBYTES = FRAME.nbytes
+
+
+def source() -&gt; None:
+    writer = pythusa.get_writer(&quot;samples&quot;)
+    while writer.write_array(FRAME) == 0:
+        time.sleep(0.001)
+
+
+def sink() -&gt; None:
+    reader = pythusa.get_reader(&quot;samples&quot;)
+    while True:
+        frame = reader.read_array(FRAME_NBYTES, dtype=np.float32)
+        if frame.size == 0:
+            time.sleep(0.001)
+            continue
+        print(frame.reshape(8))
+        return
+
+
+def main() -&gt; None:
+    with pythusa.Manager() as manager:
+        manager.create_ring(
+            pythusa.RingSpec(
+                name=&quot;samples&quot;,
+                size=FRAME_NBYTES * 32,
+                num_readers=1,
+            )
+        )
+
+        manager.create_task(
+            pythusa.TaskSpec(
+                name=&quot;source&quot;,
+                fn=source,
+                writing_rings=(&quot;samples&quot;,),
+            )
+        )
+        manager.create_task(
+            pythusa.TaskSpec(
+                name=&quot;sink&quot;,
+                fn=sink,
+                reading_rings=(&quot;samples&quot;,),
+            )
+        )
+
+        manager.start(&quot;sink&quot;)
+        manager.start(&quot;source&quot;)
+        manager.join_all()
+
+
+if __name__ == &quot;__main__&quot;:
+    main()
+</code></pre>
+<p>Notes:</p>
+<ul>
+<li>the ring size is declared in bytes</li>
+<li>the sink is started before the source so the reader is alive first</li>
+<li><code>read_array(...)</code> and <code>write_array(...)</code> are raw byte-oriented helpers</li>
+<li>on Windows and other <code>spawn</code>-based environments, the <code>main()</code> guard is required for the same reason as the pipeline examples: child processes re-import the script module during startup</li>
+</ul>
+<h2 id="raw-ring-api">Raw Ring API</h2>
+<p>The main raw ring methods are:</p>
+<ul>
+<li><code>write_array(arr) -&gt; int</code></li>
+<li><code>read_array(nbytes, dtype) -&gt; np.ndarray</code></li>
+<li><code>expose_writer_mem_view(size)</code></li>
+<li><code>expose_reader_mem_view(size)</code></li>
+<li><code>simple_write(...)</code></li>
+<li><code>simple_read(...)</code></li>
+</ul>
+<p>The first two are the most common low-level entry points.</p>
+<h3 id="write_array"><code>write_array</code></h3>
+<p><code>write_array(arr)</code>:</p>
+<ul>
+<li>treats the NumPy array as raw bytes</li>
+<li>writes it if enough space exists</li>
+<li>returns the number of bytes written</li>
+<li>returns <code>0</code> if insufficient space exists</li>
+</ul>
+<p>It does not validate application-level semantics such as expected shape.</p>
+<h3 id="read_array"><code>read_array</code></h3>
+<p><code>read_array(nbytes, dtype)</code>:</p>
+<ul>
+<li>reads exactly <code>nbytes</code> if available</li>
+<li>returns an empty array if insufficient data exists</li>
+<li>interprets the bytes as <code>dtype</code></li>
+<li>leaves shape reconstruction to the caller</li>
+</ul>
+<p>Example:</p>
+<pre><code class="language-python">frame = reader.read_array(FRAME_NBYTES, dtype=np.float32)
+if frame.size:
+    frame = frame.reshape(8)
+</code></pre>
+<h3 id="view-and-copy-semantics">View And Copy Semantics</h3>
+<p>One important caveat:</p>
+<ul>
+<li>in the non-wrap case, <code>read_array(...)</code> may return an array backed by the shared-memory view</li>
+<li>in the wrap case, it must copy into a temporary contiguous buffer first</li>
+</ul>
+<p>This means the raw path is powerful but less forgiving.
+If you keep arrays backed by shared memory alive for too long, shutdown and cleanup become easier to get wrong.</p>
+<p>That is why the higher-level pipeline binding <code>read()</code> returns an owned copy by default.</p>
+<h2 id="raw-ring-access-from-pipeline">Raw Ring Access From Pipeline</h2>
+<p>If you like <code>Pipeline</code> but still want the raw path in a specific task, use <code>.raw</code> or <code>.ring</code> from a stream binding:</p>
+<pre><code class="language-python">def worker(samples, fft) -&gt; None:
+    raw_reader = samples.raw
+    raw_writer = fft.raw
+
+    frame_nbytes = 4096 * np.dtype(np.float32).itemsize
+
+    while True:
+        frame = raw_reader.read_array(frame_nbytes, dtype=np.float32)
+        if frame.size == 0:
+            time.sleep(0.001)
+            continue
+
+        frame = frame.reshape(4096)
+        spectrum = np.fft.rfft(frame).astype(np.complex64, copy=False)
+
+        if raw_writer.write_array(spectrum) == spectrum.nbytes:
+            return
+</code></pre>
+<p>This is the escape hatch for users who want <code>Pipeline</code> orchestration with lower-level ring semantics inside selected tasks.</p>
+<h2 id="convenience-stream-bindings">Convenience Stream Bindings</h2>
+<p>The pipeline stream bindings are wrappers over raw rings.</p>
+<p>Reader bindings provide:</p>
+<ul>
+<li><code>read()</code></li>
+<li><code>read_into(out)</code></li>
+<li><code>look()</code></li>
+<li><code>increment()</code></li>
+<li><code>set_blocking(bool)</code></li>
+<li><code>is_blocking()</code></li>
+<li><code>.raw</code></li>
+<li><code>.ring</code></li>
+</ul>
+<p>Writer bindings provide:</p>
+<ul>
+<li><code>write(array)</code></li>
+<li><code>look()</code></li>
+<li><code>increment()</code></li>
+<li><code>.raw</code></li>
+<li><code>.ring</code></li>
+</ul>
+<p>Examples:</p>
+<p><code>read()</code>:</p>
+<pre><code class="language-python">def worker(samples, fft) -&gt; None:
+    while True:
+        frame = samples.read()
+        if frame is None:
+            time.sleep(0.001)
+            continue
+        spectrum = np.fft.rfft(frame).astype(np.complex64, copy=False)
+        if fft.write(spectrum):
+            return
+</code></pre>
+<p><code>read_into(out)</code>:</p>
+<pre><code class="language-python">def worker(samples, fft) -&gt; None:
+    frame = np.empty((4096,), dtype=np.float32)
+    while True:
+        if not samples.read_into(frame):
+            time.sleep(0.001)
+            continue
+        spectrum = np.fft.rfft(frame).astype(np.complex64, copy=False)
+        if fft.write(spectrum):
+            return
+</code></pre>
+<p><code>look()</code> and <code>increment()</code> on the reader:</p>
+<pre><code class="language-python">def worker(samples, fft) -&gt; None:
+    while True:
+        frame_view = samples.look()
+        if frame_view is None:
+            time.sleep(0.001)
+            continue
+        frame = np.frombuffer(frame_view, dtype=np.float32).reshape((4096,))
+        spectrum = np.fft.rfft(frame).astype(np.complex64, copy=False)
+        samples.increment()
+        if fft.write(spectrum):
+            return
+</code></pre>
+<p><code>set_blocking()</code> and <code>is_blocking()</code>:</p>
+<pre><code class="language-python">def worker(samples) -&gt; None:
+    samples.set_blocking(False)
+    if not samples.is_blocking():
+        frame_view = samples.look()
+        if frame_view is not None:
+            print(np.frombuffer(frame_view, dtype=np.float32))
+            samples.increment()
+    samples.set_blocking(True)
+</code></pre>
+<p><code>write()</code>:</p>
+<pre><code class="language-python">def worker(samples, fft) -&gt; None:
+    frame = samples.read()
+    if frame is None:
+        return
+    spectrum = np.fft.rfft(frame).astype(np.complex64, copy=False)
+    fft.write(spectrum)
+</code></pre>
+<p><code>look()</code> and <code>increment()</code> on the writer:</p>
+<pre><code class="language-python">def worker(samples, fft) -&gt; None:
+    frame = samples.read()
+    if frame is None:
+        return
+    fft_view = fft.look()
+    if fft_view is None:
+        return
+    spectrum = np.frombuffer(fft_view, dtype=np.complex64).reshape((2049,))
+    spectrum[:] = np.fft.rfft(frame).astype(np.complex64, copy=False)
+    fft.increment()
+</code></pre>
+<p><code>look()</code> returns a memoryview for the next contiguous frame and leaves the reader position unchanged. Call <code>increment()</code> after you are done with the view. If the next frame is wrapped across the ring boundary, <code>look()</code> returns <code>None</code> rather than copying.</p>
+<p>Writers have the same pattern: <code>look()</code> returns a writable memoryview for the next contiguous frame, and <code>increment()</code> commits that frame once you are done filling it. If the next slot would wrap, <code>look()</code> returns <code>None</code> rather than copying.</p>
+<p>If you need a stream to count as having a reader but do not want that reader to do any work, use <code>pipe.add_task.terminator(...)</code> at the pipeline level. It marks the bound readers inactive and then exits.</p>
+<h2 id="blocking-and-backpressure">Blocking And Backpressure</h2>
+<p>By default, each reader participates in backpressure.
+The writer's available space is limited by the slowest active reader.</p>
+<p>That is the runtime's default safety model:</p>
+<ul>
+<li>if a reader is alive and active, the writer must respect it</li>
+</ul>
+<p>You can opt a reader out temporarily:</p>
+<pre><code class="language-python">samples.set_blocking(False)
+</code></pre>
+<p>This marks the reader inactive.
+Inactive readers do not constrain the writer's writable space.</p>
+<p>When you re-enable it:</p>
+<pre><code class="language-python">samples.set_blocking(True)
+</code></pre>
+<p>the reader jumps to the current writer position.
+Unread backlog is discarded.</p>
+<p>This is useful for "latest frame wins" consumers, but it is not a lossless mode.</p>
+<h2 id="events-and-controlled-tasks">Events And Controlled Tasks</h2>
+<p>At the runtime level, <code>WorkerEvent</code> exposes:</p>
+<ul>
+<li><code>signal()</code></li>
+<li><code>wait(timeout=None)</code></li>
+<li><code>reset()</code></li>
+<li><code>is_open()</code></li>
+<li><code>pending</code></li>
+</ul>
+<p>Semantics:</p>
+<ul>
+<li><code>signal()</code> increments pending activation count and opens the event</li>
+<li><code>wait()</code> blocks on the wake event</li>
+<li><code>reset()</code> consumes one pending activation</li>
+<li>the wake event is only cleared when pending count reaches zero</li>
+</ul>
+<p>Example:</p>
+<pre><code class="language-python">def controller() -&gt; None:
+    event = pythusa.get_event(&quot;flush&quot;)
+    event.signal()
+
+
+def consumer() -&gt; None:
+    event = pythusa.get_event(&quot;flush&quot;)
+    event.wait()
+    event.reset()
+    print(&quot;flush requested&quot;)
+</code></pre>
+<p>Important limitation:</p>
+<ul>
+<li>a <code>WorkerEvent</code> is not a general-purpose multi-consumer counted queue</li>
+</ul>
+<p>The wake primitive is still event-like.
+If many consumers all wait on the same event, the ownership and reset semantics become ambiguous.</p>
+<p>Recommended pattern:</p>
+<ul>
+<li>many signalers is fine</li>
+<li>one reset-owning consumer is the intended model</li>
+<li>if many downstream tasks need separate activations, use many events</li>
+</ul>
+<h3 id="controlled-tasks">Controlled Tasks</h3>
+<p>The pipeline control helpers sit above this runtime event model:</p>
+<ul>
+<li><code>switchable</code>: wait, then rerun without resetting</li>
+<li><code>toggleable</code>: wait, reset, then run once per activation</li>
+</ul>
+<p>These wrappers do not change the worker model.
+They are still just runtime loops around the task callable.</p>
+<h2 id="monitoring-and-metrics">Monitoring And Metrics</h2>
+<p><code>Manager.start_monitor(...)</code> launches a daemon monitor thread that samples:</p>
+<ul>
+<li>ring pressure</li>
+<li>worker CPU usage</li>
+<li>worker RSS</li>
+<li>worker nice level</li>
+</ul>
+<p>Per-task snapshots are exposed as <code>ProcessMetrics</code>.</p>
+<p>This is operational visibility, not deterministic timing analysis.
+Sampling can tell you that a stage is falling behind or starving, but it is not a substitute for application-level latency measurement.</p>
+<h2 id="errors-and-current-limits">Errors And Current Limits</h2>
+<p>The runtime layer is intentionally narrow and explicit.</p>
+<p>Important constraints:</p>
+<ul>
+<li>one <code>TaskSpec</code> maps to one process</li>
+<li>one ring has one writer handle and one reader slot per registered reader</li>
+<li>raw rings move bytes, not semantic frames</li>
+<li>the runtime does not provide automatic fan-in synchronization</li>
+<li>grouped multi-task workers are not currently a public feature</li>
+</ul>
+<p>Some important error cases:</p>
+<ul>
+<li><code>RingSpec(size &lt;= 0)</code> raises <code>ValueError</code></li>
+<li><code>RingSpec(num_readers &lt; 1)</code> raises <code>ValueError</code></li>
+<li><code>TaskSpec</code> raises <code>ValueError</code> if the same ring appears in both <code>reading_rings</code> and <code>writing_rings</code></li>
+<li><code>Manager.create_task(...)</code> raises on duplicate task names</li>
+<li>starting a task that references an unregistered ring or event fails during bootstrap construction</li>
+</ul>
+<p>Be especially careful on the raw path with:</p>
+<ul>
+<li>dtype mismatches</li>
+<li>shape mismatches</li>
+<li>assuming <code>read_array(...)</code> returns owned memory</li>
+<li>forgetting that ring size is declared in bytes</li>
+</ul>
+<h2 id="when-to-bypass-pipeline">When To Bypass Pipeline</h2>
+<p>Use the runtime directly when you need:</p>
+<ul>
+<li>manual ring sizing in bytes</li>
+<li>direct ring header and pressure behavior</li>
+<li>custom startup order</li>
+<li>custom worker composition experiments</li>
+<li>benchmark or debugging scenarios that should avoid the higher-level binding layer</li>
+</ul>
+<p>Stay with <code>Pipeline</code> when:</p>
+<ul>
+<li>your graph fits the machine-and-conveyor-belt model</li>
+<li>typed frame bindings are enough</li>
+<li>you do not need to manage raw ring semantics directly</li>
+</ul>
+<p>The runtime is the right place for power users.
+<code>Pipeline</code> is still the right default for almost everyone else.</p></div>
             </div>
         </div>
 

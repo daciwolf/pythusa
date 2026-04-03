@@ -6,7 +6,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <meta name="description" content="Python-first shared-memory DSP pipelines">
         
-        <link rel="canonical" href="https://<your-github-username>.github.io/pythusa/">
+        <link rel="canonical" href="https://daciwolf.github.io/pythusa/">
         <link rel="shortcut icon" href="img/favicon.ico">
         <title>PYTHUSA</title>
         <link href="css/bootstrap.min.css" rel="stylesheet">
@@ -38,10 +38,19 @@
                                 <a href="." class="nav-link active" aria-current="page">Home</a>
                             </li>
                             <li class="nav-item">
+                                <a href="demos/" class="nav-link">Showcase Demos</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="internals/" class="nav-link">Under the Hood</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="pipeline/" class="nav-link">Pipeline API</a>
                             </li>
                             <li class="nav-item">
                                 <a href="runtime/" class="nav-link">Runtime</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="benchmarks/" class="nav-link">Benchmarks</a>
                             </li>
                         </ul>
 
@@ -57,12 +66,12 @@
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a rel="next" href="pipeline/" class="nav-link">
+                                <a rel="next" href="demos/" class="nav-link">
                                     Next <i class="fa fa-arrow-right"></i>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="https://github.com/<your-github-username>/pythusa/edit/master/docs/index.md" class="nav-link">Edit on <your-github-username>/pythusa
+                                <a href="https://github.com/daciwolf/pythusa/edit/master/docs/index.md" class="nav-link">Edit on daciwolf/pythusa
                                     </a>
                             </li>
                     </ul>
@@ -85,6 +94,38 @@
             
             <li class="nav-item" data-bs-level="1"><a href="#pythusa" class="nav-link">PYTHUSA</a>
               <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#what-pythusa-is" class="nav-link">What PYTHUSA Is</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#start-here" class="nav-link">Start Here</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#quick-start" class="nav-link">Quick Start</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#core-ideas" class="nav-link">Core Ideas</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#what-to-read-next" class="nav-link">What To Read Next</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#install" class="nav-link">Install</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#examples" class="nav-link">Examples</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#license" class="nav-link">License</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
               </ul>
             </li>
         </ul>
@@ -93,7 +134,149 @@
                     <div class="col-md-9" role="main">
 
 <h1 id="pythusa">PYTHUSA</h1>
-<p>TODO</p></div>
+<p>PYTHUSA is a Python-first shared-memory runtime for fixed-shape NumPy data pipelines.
+It is built for workloads where you want multiple Python processes moving numeric frames between stages with low overhead and explicit control over latency, throughput, and backpressure.</p>
+<p><img alt="PYTHUSA simple dataflow" src="assets/simple-dataflow.svg" /></p>
+<p><strong><a href="demos/">Showcase Demos</a></strong> -- FFT pipeline hitting <strong>~68 Gbit/s</strong> across 49 signals and a market microstructure replay desk pushing <strong>~50 Gbit/s</strong> across 8 symbols with live quant analytics. No C extensions. Performance numbers, architecture diagrams, and run commands.</p>
+<h2 id="what-pythusa-is">What PYTHUSA Is</h2>
+<p>The simplest mental model is a factory line:</p>
+<ul>
+<li>tasks are the machines</li>
+<li>streams are the conveyor belts</li>
+<li>events are the switches and gates</li>
+</ul>
+<p>You write the processing code inside the tasks.
+PYTHUSA handles:</p>
+<ul>
+<li>shared-memory transport</li>
+<li>worker process setup</li>
+<li>reader and writer wiring</li>
+<li>event sharing</li>
+<li>monitoring and ring pressure reporting</li>
+</ul>
+<h2 id="start-here">Start Here</h2>
+<ul>
+<li><a href="pipeline/">Pipeline API</a>
+  The main public API. Start here if you want to build a graph of streams, tasks, and events.</li>
+<li><a href="runtime/">Runtime</a>
+  The lower-level layer under <code>Pipeline</code>. Use this if you need direct ring or process control.</li>
+<li><a href="benchmarks/">Benchmarks</a>
+  Benchmark modes, output conventions, and current benchmarking entry points.</li>
+</ul>
+<h2 id="quick-start">Quick Start</h2>
+<pre><code class="language-python">from __future__ import annotations
+
+import time
+import numpy as np
+import pythusa
+
+
+FRAME = np.arange(8, dtype=np.float32)
+
+
+def source(samples) -&gt; None:
+    samples.write(FRAME)
+
+
+def scale(samples, doubled) -&gt; None:
+    while True:
+        frame = samples.read()
+        if frame is None:
+            time.sleep(0.001)
+            continue
+        doubled.write((frame * 2.0).astype(np.float32, copy=False))
+        return
+
+
+def sink(doubled) -&gt; None:
+    while True:
+        frame = doubled.read()
+        if frame is None:
+            time.sleep(0.001)
+            continue
+        print(frame)
+        return
+
+
+def main() -&gt; None:
+    with pythusa.Pipeline(&quot;demo&quot;) as pipe:
+        pipe.add_stream(&quot;samples&quot;, shape=(8,), dtype=np.float32)
+        pipe.add_stream(&quot;doubled&quot;, shape=(8,), dtype=np.float32)
+
+        pipe.add_task(&quot;source&quot;, fn=source, writes={&quot;samples&quot;: &quot;samples&quot;})
+        pipe.add_task(
+            &quot;scale&quot;,
+            fn=scale,
+            reads={&quot;samples&quot;: &quot;samples&quot;},
+            writes={&quot;doubled&quot;: &quot;doubled&quot;},
+        )
+        pipe.add_task(&quot;sink&quot;, fn=sink, reads={&quot;doubled&quot;: &quot;doubled&quot;})
+
+        pipe.run()
+
+
+if __name__ == &quot;__main__&quot;:
+    main()
+</code></pre>
+<p>On Windows and other <code>spawn</code>-based multiprocessing environments, keep <code>pipe.start()</code> and <code>pipe.run()</code> inside a <code>main()</code> guarded by <code>if __name__ == "__main__":</code>.</p>
+<h2 id="core-ideas">Core Ideas</h2>
+<h3 id="streams">Streams</h3>
+<p>Streams move fixed-shape, fixed-dtype NumPy frames between tasks.
+At compile time, a stream becomes a shared-memory ring buffer sized in bytes.</p>
+<h3 id="tasks">Tasks</h3>
+<p>Tasks are normal Python callables.
+Today, one registered task maps to one worker process.</p>
+<h3 id="events">Events</h3>
+<p>Events are process-shared control primitives used to gate or trigger work.
+Use them when a task should react to a signal instead of running unconditionally.</p>
+<h2 id="what-to-read-next">What To Read Next</h2>
+<ul>
+<li>Read <a href="internals/">Under the Hood</a> for a guided walkthrough of the hot path -- the code behind 68 Gbit/s.</li>
+<li>Read <a href="pipeline/">Pipeline API</a> for the high-level programming model.</li>
+<li>Read <a href="runtime/">Runtime</a> if you need to understand ring buffers, task bootstrap, or raw ring access.</li>
+<li>Read <a href="benchmarks/">Benchmarks</a> if you want to compare throughput and latency modes.</li>
+</ul>
+<h2 id="install">Install</h2>
+<p>PYTHUSA currently targets Python 3.12 only.</p>
+<h3 id="install-from-pypi">Install From PyPI</h3>
+<pre><code class="language-bash">python -m pip install pythusa
+</code></pre>
+<p>Optional extras from PyPI:</p>
+<pre><code class="language-bash">python -m pip install &quot;pythusa[test]&quot;
+python -m pip install &quot;pythusa[examples]&quot;
+python -m pip install &quot;pythusa[benchmarks]&quot;
+</code></pre>
+<h3 id="install-from-source">Install From Source</h3>
+<h4 id="macos-linux">macOS / Linux</h4>
+<pre><code class="language-bash">python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e .
+</code></pre>
+<h4 id="windows-powershell">Windows PowerShell</h4>
+<pre><code class="language-powershell">py -3.12 -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install -e .
+</code></pre>
+<p>Optional extras:</p>
+<pre><code class="language-bash">python -m pip install -e &quot;.[test]&quot;
+python -m pip install -e &quot;.[examples]&quot;
+python -m pip install -e &quot;.[benchmarks]&quot;
+</code></pre>
+<h2 id="examples">Examples</h2>
+<p>See <strong><a href="demos/">Showcase Demos</a></strong> for the two flagship examples with full architecture walkthroughs, performance numbers, and run commands:</p>
+<ul>
+<li><strong>FFT Pipeline Demo</strong> -- ~68 Gbit/s sustained, ~140k FFT/s across 49 signals with 7 generators.</li>
+<li><strong>Stock Quant Demo</strong> -- 8-symbol L3 order-book replay with live quant analytics, latency tracking, and serial-baseline speedup.</li>
+</ul>
+<p>Smaller standalone scripts:</p>
+<ul>
+<li><code>python examples/basic_workers.py</code> -- raw <code>Manager</code> plus <code>SharedRingBuffer</code> usage.</li>
+<li><code>python examples/engine_dsp_pipeline.py</code> -- larger <code>Pipeline</code> example with plotting, monitoring, and real DSP-style stages. Install <code>.[examples]</code> first.</li>
+<li><code>python examples/fir128_scaling_pipeline.py</code> -- round-robin FIR128 fan-out/fan-in scaling example over engine-data-derived signals.</li>
+</ul>
+<h2 id="license">License</h2>
+<p>PYTHUSA is licensed under the GNU General Public License, version 2 only (<code>GPL-2.0-only</code>).
+See the repository <code>LICENSE</code> file for the full license text.</p></div>
             </div>
         </div>
 
@@ -175,5 +358,5 @@
 
 <!--
 MkDocs version : 1.6.1
-Build Date UTC : 2026-03-29 10:00:25.916028+00:00
+Build Date UTC : 2026-04-03 02:42:13.067158+00:00
 -->

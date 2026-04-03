@@ -1,6 +1,6 @@
 # Under the Hood
 
-How does pure Python hit 68 Gbit/s? No C extensions, no Cython, no ctypes FFI.
+How does pure Python hit 73 Gbit/s? No C extensions, no Cython, no ctypes FFI.
 The answer is `multiprocessing.shared_memory`, `memoryview`, and a ring buffer
 that never touches the data more than it has to.
 
@@ -345,7 +345,7 @@ A user-facing PYTHUSA pipeline compiles down to:
 4. **Cached backpressure** -- writers amortize the min-reader scan, staying lock-free on the data path.
 5. **Process-local registries** -- each child re-attaches rings by name and runs with zero per-frame coordination overhead.
 
-The result: **68 Gbit/s of FFT signal payload across 49 signals on a MacBook Air M2**, with Python doing the orchestration and NumPy doing the math.
+The result: **73 Gbit/s of FFT signal payload across 49 signals on a MacBook Air M2**, with Python doing the orchestration and NumPy doing the math.
 
 See the [Showcase Demos](demos.md) for end-to-end benchmark results, or the
 [Pipeline API](pipeline.md) to start building your own pipeline.
