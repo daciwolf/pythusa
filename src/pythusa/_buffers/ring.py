@@ -13,6 +13,9 @@ from ..typing import RingView
 
 __all__ = ["RingSpec", "SharedRingBuffer"]
 
+_DEFAULT_MIN_READER_POS_REFRESH_INTERVAL = 64
+_DEFAULT_MIN_READER_POS_REFRESH_S = 0.005
+
 # Pressure is the complement of available writer space expressed as a percentage.
 # For example, if the writer has 33 free bytes left in a 100-byte ring, the ring
 # is considered to be under 67% pressure.
@@ -26,6 +29,8 @@ class RingSpec:
     reader: int = -1
     cache_align: bool = True
     cache_size: int = 64
+    min_reader_pos_refresh_interval: int = _DEFAULT_MIN_READER_POS_REFRESH_INTERVAL
+    min_reader_pos_refresh_s: float = _DEFAULT_MIN_READER_POS_REFRESH_S
 
     def __post_init__(self) -> None:
         if self.size <= 0:
@@ -34,12 +39,27 @@ class RingSpec:
             raise ValueError(f"RingSpec '{self.name}': need at least 1 reader")
         if self.cache_align and (self.cache_size & (self.cache_size - 1)):
             raise ValueError("cache_size must be a power of two")
+        if (
+            isinstance(self.min_reader_pos_refresh_interval, bool)
+            or not isinstance(self.min_reader_pos_refresh_interval, int)
+        ):
+            raise TypeError("min_reader_pos_refresh_interval must be an integer")
+        if self.min_reader_pos_refresh_interval < 1:
+            raise ValueError("min_reader_pos_refresh_interval must be >= 1")
+        if isinstance(self.min_reader_pos_refresh_s, bool) or not isinstance(
+            self.min_reader_pos_refresh_s, (int, float)
+        ):
+            raise TypeError("min_reader_pos_refresh_s must be a real number")
+        if self.min_reader_pos_refresh_s < 0:
+            raise ValueError("min_reader_pos_refresh_s must be >= 0")
 
     def to_kwargs(self, *, create: bool, reader: int) -> dict:
         return dict(
             name=self.name, create=create, size=self.size,
             num_readers=self.num_readers, reader=reader,
             cache_align=self.cache_align, cache_size=self.cache_size,
+            min_reader_pos_refresh_interval=self.min_reader_pos_refresh_interval,
+            min_reader_pos_refresh_s=float(self.min_reader_pos_refresh_s),
         )
 
     def __repr__(self) -> str:
@@ -74,6 +94,8 @@ class SharedRingBuffer(shared_memory.SharedMemory):
         reader: int,
         cache_align: bool = False,
         cache_size: int = 64,
+        min_reader_pos_refresh_interval: int = _DEFAULT_MIN_READER_POS_REFRESH_INTERVAL,
+        min_reader_pos_refresh_s: float = _DEFAULT_MIN_READER_POS_REFRESH_S,
     ):
         self.cache_align = cache_align
         if self.cache_align:
@@ -81,6 +103,19 @@ class SharedRingBuffer(shared_memory.SharedMemory):
                 raise ValueError("cache_size must be > 0 when cache_align is True")
             if cache_size & (cache_size - 1):
                 raise ValueError("cache_size must be a power of two when cache_align is True")
+        if (
+            isinstance(min_reader_pos_refresh_interval, bool)
+            or not isinstance(min_reader_pos_refresh_interval, int)
+        ):
+            raise TypeError("min_reader_pos_refresh_interval must be an integer")
+        if min_reader_pos_refresh_interval < 1:
+            raise ValueError("min_reader_pos_refresh_interval must be >= 1")
+        if isinstance(min_reader_pos_refresh_s, bool) or not isinstance(
+            min_reader_pos_refresh_s, (int, float)
+        ):
+            raise TypeError("min_reader_pos_refresh_s must be a real number")
+        if min_reader_pos_refresh_s < 0:
+            raise ValueError("min_reader_pos_refresh_s must be >= 0")
         if reader != self._NO_READER and not 0 <= reader < num_readers:
             raise ValueError(f"reader index {reader} is out of range for num_readers={num_readers}")
 
@@ -127,10 +162,10 @@ class SharedRingBuffer(shared_memory.SharedMemory):
         self.ring_buffer = memoryview(self.buf[self.header_size:self.header_size + self.ring_buffer_size])
         # min-reader cache: avoids O(num_readers) scans on every write-path query.
         # Stale cache is conservative (smaller writable), never optimistic.
-        self._min_reader_pos_refresh_interval = 64
+        self._min_reader_pos_refresh_interval = min_reader_pos_refresh_interval
         # Also refresh on wall-clock cadence so external reader progress is seen
         # even when writer is stalled (no local writes to trigger periodic scan).
-        self._min_reader_pos_refresh_s = 0.005
+        self._min_reader_pos_refresh_s = float(min_reader_pos_refresh_s)
         self._writes_since_min_scan = 0
         self._reader_positions_dirty = False
         self._min_reader_pos_cache = self._scan_min_reader_pos()

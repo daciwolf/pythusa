@@ -146,6 +146,66 @@ class SharedRingBufferBasicTests(unittest.TestCase):
                 cache_size=0,
             )
 
+    def test_refresh_settings_default_to_existing_values(self):
+        ring = self._make_ring(size=64, num_readers=1, reader=0)
+
+        self.assertEqual(ring._min_reader_pos_refresh_interval, 64)
+        self.assertEqual(ring._min_reader_pos_refresh_s, 0.005)
+
+    def test_refresh_settings_accept_explicit_values(self):
+        name = self._make_name()
+        ring = SharedRingBuffer(
+            name=name,
+            create=True,
+            size=64,
+            num_readers=1,
+            reader=0,
+            min_reader_pos_refresh_interval=11,
+            min_reader_pos_refresh_s=0.125,
+        )
+        self.addCleanup(self._cleanup_ring, ring)
+
+        self.assertEqual(ring._min_reader_pos_refresh_interval, 11)
+        self.assertEqual(ring._min_reader_pos_refresh_s, 0.125)
+
+    def test_refresh_settings_validation_rejects_invalid_values(self):
+        with self.assertRaisesRegex(TypeError, "min_reader_pos_refresh_interval"):
+            SharedRingBuffer(
+                name=self._make_name(),
+                create=True,
+                size=64,
+                num_readers=1,
+                reader=0,
+                min_reader_pos_refresh_interval=1.5,
+            )
+        with self.assertRaisesRegex(ValueError, "min_reader_pos_refresh_interval"):
+            SharedRingBuffer(
+                name=self._make_name(),
+                create=True,
+                size=64,
+                num_readers=1,
+                reader=0,
+                min_reader_pos_refresh_interval=0,
+            )
+        with self.assertRaisesRegex(TypeError, "min_reader_pos_refresh_s"):
+            SharedRingBuffer(
+                name=self._make_name(),
+                create=True,
+                size=64,
+                num_readers=1,
+                reader=0,
+                min_reader_pos_refresh_s="fast",
+            )
+        with self.assertRaisesRegex(ValueError, "min_reader_pos_refresh_s"):
+            SharedRingBuffer(
+                name=self._make_name(),
+                create=True,
+                size=64,
+                num_readers=1,
+                reader=0,
+                min_reader_pos_refresh_s=-0.1,
+            )
+
     def test_update_and_increment_positions(self):
         ring = self._make_ring(size=64, num_readers=1, reader=0)
 

@@ -138,6 +138,8 @@ pipe.add_stream(
     dtype=np.float32,
     frames=64,
     cache_align=True,
+    min_reader_pos_refresh_interval=64,
+    min_reader_pos_refresh_s=0.005,
 )
 ```
 
@@ -148,9 +150,13 @@ Parameters:
 - `dtype`: NumPy dtype for one frame
 - `frames`: number of frames to allocate in the backing ring buffer
 - `cache_align`: whether compile-time ring sizing should apply cache-line alignment
+- `min_reader_pos_refresh_interval`: rescan the slowest-reader cache after this many writes
+- `min_reader_pos_refresh_s`: rescan the slowest-reader cache after this many seconds even if the writer is otherwise idle
 
 Conceptually, a stream is the conveyor belt between two machines.
 At compile time, that declaration becomes a shared-memory ring sized for 32 frames by default, or the explicit `frames=` value you provide.
+By default, the writer refreshes cached backpressure state every 64 writes or every 5 ms, whichever comes first.
+You only need to tune these refresh knobs if you are trading off writer-side scan overhead against how quickly external reader progress becomes visible.
 
 Current rules:
 

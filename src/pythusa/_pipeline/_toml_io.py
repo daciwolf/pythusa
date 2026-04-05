@@ -101,6 +101,13 @@ def _append_stream_table(lines: list[str], stream: dict[str, Any]) -> None:
     lines.append(f'dtype = {_toml_string(np.dtype(stream["dtype"]).str)}')
     lines.append(f"frames = {int(stream['frames'])}")
     lines.append(f"cache_align = {_toml_bool(stream['cache_align'])}")
+    lines.append(
+        "min_reader_pos_refresh_interval = "
+        f"{int(stream['min_reader_pos_refresh_interval'])}"
+    )
+    lines.append(
+        f"min_reader_pos_refresh_s = {float(stream['min_reader_pos_refresh_s'])!r}"
+    )
     if stream["description"] is not None:
         lines.append(f'description = {_toml_string(stream["description"])}')
     lines.append("")

@@ -265,7 +265,8 @@ def compute_max_amount_writable(self, force_rescan=False) -> int:
     return self.max_amount_writable
 ```
 
-The cache refreshes every 64 writes **or** every 5 ms, whichever comes first.
+By default, the cache refreshes every 64 writes **or** every 5 ms, whichever comes first.
+Those thresholds are now configurable through `RingSpec(...)` and `Pipeline.add_stream(...)`.
 Between refreshes the cached value is **conservative** -- it can only
 under-report writable space, never over-report. No locks, no atomics, no
 syscalls on the fast path.

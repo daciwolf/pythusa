@@ -29,13 +29,73 @@ class ManagerBasicTests(unittest.TestCase):
         mgr = Manager()
 
         try:
-            spec = RingSpec(name="rb", size=32, num_readers=2)
+            spec = RingSpec(
+                name="rb",
+                size=32,
+                num_readers=2,
+                min_reader_pos_refresh_interval=17,
+                min_reader_pos_refresh_s=0.125,
+            )
             returned = mgr.create_ring(spec)
 
             self.assertIs(returned, mgr)
             self.assertIs(mgr._ring_specs["rb"], spec)
             self.assertIn("rb", mgr._rings)
             self.assertEqual(mgr._ring_reader_counters["rb"], 0)
+            self.assertEqual(mgr._rings["rb"]._min_reader_pos_refresh_interval, 17)
+            self.assertEqual(mgr._rings["rb"]._min_reader_pos_refresh_s, 0.125)
+        finally:
+            mgr.close()
+
+    def test_task_bootstrap_propagates_ring_refresh_config(self):
+        mgr = Manager()
+
+        try:
+            mgr.create_ring(
+                RingSpec(
+                    name="input",
+                    size=32,
+                    num_readers=1,
+                    min_reader_pos_refresh_interval=7,
+                    min_reader_pos_refresh_s=0.015,
+                )
+            )
+            mgr.create_ring(
+                RingSpec(
+                    name="output",
+                    size=32,
+                    num_readers=1,
+                    min_reader_pos_refresh_interval=13,
+                    min_reader_pos_refresh_s=0.2,
+                )
+            )
+            mgr.create_task(
+                TaskSpec(
+                    name="task",
+                    fn=lambda: None,
+                    reading_rings=("input",),
+                    writing_rings=("output",),
+                )
+            )
+
+            bootstrap = mgr._task_bootstrap("task")
+
+            self.assertEqual(
+                bootstrap.reading_ring_kwargs["input"]["min_reader_pos_refresh_interval"],
+                7,
+            )
+            self.assertEqual(
+                bootstrap.reading_ring_kwargs["input"]["min_reader_pos_refresh_s"],
+                0.015,
+            )
+            self.assertEqual(
+                bootstrap.writing_ring_kwargs["output"]["min_reader_pos_refresh_interval"],
+                13,
+            )
+            self.assertEqual(
+                bootstrap.writing_ring_kwargs["output"]["min_reader_pos_refresh_s"],
+                0.2,
+            )
         finally:
             mgr.close()
 

@@ -57,9 +57,13 @@ You register objects and start named tasks yourself.
 - `num_readers`
 - `cache_align`
 - `cache_size`
+- `min_reader_pos_refresh_interval`
+- `min_reader_pos_refresh_s`
 
 Important: at the runtime level, ring size is always in bytes.
 The raw ring does not know about NumPy frame shape or dtype beyond whatever the caller chooses to interpret.
+The two refresh fields control how often the writer rescans reader positions to recompute the cached slowest-reader boundary.
+Defaults are `64` writes and `0.005` seconds.
 
 ### `TaskSpec`
 
@@ -93,6 +97,7 @@ It is a fixed-size byte ring with one writer position and one reader position pe
 
 The ring is concerned only with bytes.
 Shape and dtype interpretation are the caller's responsibility.
+It accepts the same min-reader refresh knobs as `RingSpec`, with the same defaults.
 
 ### `WorkerEvent`
 

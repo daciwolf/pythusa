@@ -246,6 +246,20 @@ class PipelineCompileTests(unittest.TestCase):
 
         self.assertEqual(pipe._streams["samples"]["frames"], 48)
 
+    def test_add_stream_stores_configured_refresh_settings(self):
+        pipe = Pipeline("radar")
+
+        pipe.add_stream(
+            "samples",
+            shape=(4,),
+            dtype=np.float32,
+            min_reader_pos_refresh_interval=9,
+            min_reader_pos_refresh_s=0.125,
+        )
+
+        self.assertEqual(pipe._streams["samples"]["min_reader_pos_refresh_interval"], 9)
+        self.assertEqual(pipe._streams["samples"]["min_reader_pos_refresh_s"], 0.125)
+
     def test_add_stream_rejects_non_integer_frame_count(self):
         pipe = Pipeline("radar")
 
@@ -257,6 +271,38 @@ class PipelineCompileTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "frames must be >= 1"):
             pipe.add_stream("samples", shape=(4,), dtype=np.float32, frames=0)
+
+    def test_add_stream_rejects_invalid_refresh_settings(self):
+        pipe = Pipeline("radar")
+
+        with self.assertRaisesRegex(TypeError, "min_reader_pos_refresh_interval"):
+            pipe.add_stream(
+                "samples",
+                shape=(4,),
+                dtype=np.float32,
+                min_reader_pos_refresh_interval=1.5,
+            )
+        with self.assertRaisesRegex(ValueError, "min_reader_pos_refresh_interval"):
+            pipe.add_stream(
+                "samples",
+                shape=(4,),
+                dtype=np.float32,
+                min_reader_pos_refresh_interval=0,
+            )
+        with self.assertRaisesRegex(TypeError, "min_reader_pos_refresh_s"):
+            pipe.add_stream(
+                "samples",
+                shape=(4,),
+                dtype=np.float32,
+                min_reader_pos_refresh_s="fast",
+            )
+        with self.assertRaisesRegex(ValueError, "min_reader_pos_refresh_s"):
+            pipe.add_stream(
+                "samples",
+                shape=(4,),
+                dtype=np.float32,
+                min_reader_pos_refresh_s=-0.5,
+            )
 
     def test_add_task_rejects_duplicate_names(self):
         pipe = Pipeline("radar")
@@ -523,7 +569,15 @@ class PipelineCompileTests(unittest.TestCase):
 
     def test_save_and_reconstruct_round_trip_pipeline_declaration(self):
         pipe = Pipeline("radar")
-        pipe.add_stream("samples", shape=(4,), dtype=np.float32, frames=12, cache_align=False)
+        pipe.add_stream(
+            "samples",
+            shape=(4,),
+            dtype=np.float32,
+            frames=12,
+            cache_align=False,
+            min_reader_pos_refresh_interval=9,
+            min_reader_pos_refresh_s=0.125,
+        )
         pipe.add_event("shutdown", initial_state=True)
         pipe.add_task(
             "acquire",
@@ -541,6 +595,8 @@ class PipelineCompileTests(unittest.TestCase):
         self.assertIn("format_version = 1", text)
         self.assertIn('name = "radar"', text)
         self.assertIn("frames = 12", text)
+        self.assertIn("min_reader_pos_refresh_interval = 9", text)
+        self.assertIn("min_reader_pos_refresh_s = 0.125", text)
         self.assertIn(f'function_module = "{_task_fn.__module__}"', text)
         self.assertIn('function_qualname = "_task_fn"', text)
         self.assertEqual(restored.name, "radar")
@@ -548,6 +604,8 @@ class PipelineCompileTests(unittest.TestCase):
         self.assertEqual(restored._streams["samples"]["dtype"], np.dtype(np.float32))
         self.assertEqual(restored._streams["samples"]["frames"], 12)
         self.assertFalse(restored._streams["samples"]["cache_align"])
+        self.assertEqual(restored._streams["samples"]["min_reader_pos_refresh_interval"], 9)
+        self.assertEqual(restored._streams["samples"]["min_reader_pos_refresh_s"], 0.125)
         self.assertTrue(restored._events["shutdown"]["initial_state"])
         self.assertIs(restored._tasks["acquire"]["fn"], _task_fn)
         self.assertEqual(
@@ -733,6 +791,11 @@ class PipelineCompileTests(unittest.TestCase):
             restored = Pipeline.reconstruct(path)
 
         self.assertEqual(restored._streams["samples"]["frames"], 32)
+        self.assertEqual(
+            restored._streams["samples"]["min_reader_pos_refresh_interval"],
+            64,
+        )
+        self.assertEqual(restored._streams["samples"]["min_reader_pos_refresh_s"], 0.005)
 
     def test_reconstruct_rejects_event_missing_name(self):
         with TemporaryDirectory() as tmpdir:
@@ -1017,6 +1080,34 @@ class PipelineCompileTests(unittest.TestCase):
             pipe.compile()
 
             self.assertEqual(pipe._manager._ring_specs["samples"].size, 80)
+        finally:
+            pipe._manager.close()
+
+    def test_compile_propagates_stream_refresh_settings_to_ring_spec(self):
+        pipe = Pipeline("radar")
+
+        try:
+            pipe.add_stream(
+                "samples",
+                shape=(4,),
+                dtype=np.float32,
+                cache_align=False,
+                min_reader_pos_refresh_interval=21,
+                min_reader_pos_refresh_s=0.25,
+            )
+            pipe.add_task("acquire", fn=_source_task, writes={"samples": "samples"})
+            pipe.add_task("sink", fn=_sample_reader, reads={"samples": "samples"})
+
+            pipe.compile()
+
+            self.assertEqual(
+                pipe._manager._ring_specs["samples"].min_reader_pos_refresh_interval,
+                21,
+            )
+            self.assertEqual(
+                pipe._manager._ring_specs["samples"].min_reader_pos_refresh_s,
+                0.25,
+            )
         finally:
             pipe._manager.close()
 

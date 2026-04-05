@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pythusa"
-version = "0.1.3"
+version = "0.1.4"
 description = "Python-first shared-memory DSP pipelines with zero-copy transport and runtime orchestration."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"

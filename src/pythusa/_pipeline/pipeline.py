@@ -54,10 +54,20 @@ class Pipeline:
         dtype: Any,
         frames: int = _DEFAULT_STREAM_FRAMES,
         cache_align: bool = True,
+        min_reader_pos_refresh_interval: int = 64,
+        min_reader_pos_refresh_s: float = 0.005,
         description: str | None = None,
     ) -> "Pipeline":
         self._ensure_open()
         frames = _validated_stream_frames(name, frames)
+        min_reader_pos_refresh_interval = _validated_stream_min_reader_pos_refresh_interval(
+            name,
+            min_reader_pos_refresh_interval,
+        )
+        min_reader_pos_refresh_s = _validated_stream_min_reader_pos_refresh_s(
+            name,
+            min_reader_pos_refresh_s,
+        )
         self._register_unique(
             store=self._streams,
             kind="Stream",
@@ -68,6 +78,8 @@ class Pipeline:
                 "dtype": dtype,
                 "frames": frames,
                 "cache_align": cache_align,
+                "min_reader_pos_refresh_interval": min_reader_pos_refresh_interval,
+                "min_reader_pos_refresh_s": min_reader_pos_refresh_s,
                 "description": description,
             },
         )
@@ -230,13 +242,23 @@ class Pipeline:
 
         for stream in data.get("streams", []):
             require_keys(stream, "stream", "name", "shape", "dtype")
+            stream_kwargs = {
+                "frames": stream.get("frames", _DEFAULT_STREAM_FRAMES),
+                "cache_align": stream.get("cache_align", True),
+                "description": stream.get("description"),
+            }
+            if "min_reader_pos_refresh_interval" in stream:
+                stream_kwargs["min_reader_pos_refresh_interval"] = stream[
+                    "min_reader_pos_refresh_interval"
+                ]
+            if "min_reader_pos_refresh_s" in stream:
+                stream_kwargs["min_reader_pos_refresh_s"] = stream["min_reader_pos_refresh_s"]
+
             pipe.add_stream(
                 stream["name"],
                 shape=tuple(stream["shape"]),
                 dtype=np.dtype(stream["dtype"]),
-                frames=stream.get("frames", _DEFAULT_STREAM_FRAMES),
-                cache_align=stream.get("cache_align", True),
-                description=stream.get("description"),
+                **stream_kwargs,
             )
 
         for event in data.get("events", []):
@@ -356,6 +378,28 @@ def _validated_stream_frames(name: str, frames: Any) -> int:
     if frames < 1:
         raise ValueError(f"Stream '{name}': frames must be >= 1.")
     return frames
+
+
+def _validated_stream_min_reader_pos_refresh_interval(name: str, interval: Any) -> int:
+    if isinstance(interval, bool) or not isinstance(interval, int):
+        raise TypeError(
+            f"Stream '{name}': min_reader_pos_refresh_interval must be an integer."
+        )
+    if interval < 1:
+        raise ValueError(
+            f"Stream '{name}': min_reader_pos_refresh_interval must be >= 1."
+        )
+    return interval
+
+
+def _validated_stream_min_reader_pos_refresh_s(name: str, seconds: Any) -> float:
+    if isinstance(seconds, bool) or not isinstance(seconds, (int, float)):
+        raise TypeError(
+            f"Stream '{name}': min_reader_pos_refresh_s must be a real number."
+        )
+    if seconds < 0:
+        raise ValueError(f"Stream '{name}': min_reader_pos_refresh_s must be >= 0.")
+    return float(seconds)
 
 
 __all__ = ["Pipeline"]

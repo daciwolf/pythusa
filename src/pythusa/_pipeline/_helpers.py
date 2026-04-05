@@ -99,6 +99,8 @@ def ring_spec_for_stream(stream: dict[str, Any], *, reader_count: int) -> RingSp
         size=ring_size,
         num_readers=reader_count,
         cache_align=stream["cache_align"],
+        min_reader_pos_refresh_interval=stream["min_reader_pos_refresh_interval"],
+        min_reader_pos_refresh_s=stream["min_reader_pos_refresh_s"],
     )
 
 
