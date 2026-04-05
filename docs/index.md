@@ -119,7 +119,7 @@ Use them when a task should react to a signal instead of running unconditionally
 
 ## Install
 
-PYTHUSA currently targets Python 3.12 only.
+PYTHUSA supports Python 3.12, 3.13, and 3.14.
 
 ### Install From PyPI
 
@@ -140,7 +140,7 @@ python -m pip install "pythusa[benchmarks]"
 #### macOS / Linux
 
 ```bash
-python3.12 -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e .
 ```
@@ -148,7 +148,7 @@ python -m pip install -e .
 #### Windows PowerShell
 
 ```powershell
-py -3.12 -m venv .venv
+py -3 -m venv .venv
 .venv\Scripts\Activate.ps1
 python -m pip install -e .
 ```

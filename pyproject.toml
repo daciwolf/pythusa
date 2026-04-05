@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pythusa"
-version = "0.1.4"
+version = "0.1.6"
 description = "Python-first shared-memory DSP pipelines with zero-copy transport and runtime orchestration."
 readme = "README.md"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12"
 license = {file = "LICENSE"}
 authors = [
   {name = "PYTHUSA Contributors"},
@@ -22,6 +22,8 @@ classifiers = [
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Topic :: Scientific/Engineering",
   "Topic :: Software Development :: Libraries :: Python Modules",
   "Topic :: System :: Distributed Computing",
