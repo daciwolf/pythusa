@@ -98,6 +98,139 @@ class PipelineCompileTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "cycle"):
             pipe.compile()
 
+    def test_compile_allows_cycle_when_feedback_edge_is_excused(self):
+        pipe = Pipeline("cycle")
+
+        try:
+            pipe.add_stream("a", shape=(1,), dtype=np.float32, cache_align=False)
+            pipe.add_stream("b", shape=(1,), dtype=np.float32, cache_align=False)
+            pipe.add_task(
+                "task_a",
+                fn=_cycle_task_a,
+                reads={"b_in": "b"},
+                writes={"a_out": "a"},
+            )
+            pipe.add_task(
+                "task_b",
+                fn=_cycle_task_b,
+                reads={"a_in": "a"},
+                writes={"b_out": "b"},
+            )
+            returned = pipe.add_excused_edge("b", "task_a")
+
+            pipe.compile()
+
+            self.assertIs(returned, pipe)
+            self.assertEqual(pipe._task_order, ("task_a", "task_b"))
+            self.assertEqual(pipe._task_start_order, ("task_b", "task_a"))
+            self.assertEqual(pipe._manager._ring_specs["a"].num_readers, 1)
+            self.assertEqual(pipe._manager._ring_specs["b"].num_readers, 1)
+            self.assertEqual(pipe._manager._task_specs["task_a"].reading_rings, ("b",))
+        finally:
+            pipe._manager.close()
+
+    def test_compile_rejects_cycle_when_excused_task_is_not_the_reader(self):
+        pipe = Pipeline("cycle")
+        pipe.add_stream("a", shape=(1,), dtype=np.float32, cache_align=False)
+        pipe.add_stream("b", shape=(1,), dtype=np.float32, cache_align=False)
+        pipe.add_task(
+            "task_a",
+            fn=_cycle_task_a,
+            reads={"b_in": "b"},
+            writes={"a_out": "a"},
+        )
+        pipe.add_task(
+            "task_b",
+            fn=_cycle_task_b,
+            reads={"a_in": "a"},
+            writes={"b_out": "b"},
+        )
+        pipe.add_excused_edge("b", "task_b")
+
+        with self.assertRaisesRegex(ValueError, "cycle"):
+            pipe.compile()
+
+    def test_excused_only_edge_starts_in_reverse_registration_order(self):
+        writer_first = Pipeline("pair")
+
+        try:
+            writer_first.add_stream("link", shape=(1,), dtype=np.float32, cache_align=False)
+            writer_first.add_task("writer", fn=_source_task, writes={"samples": "link"})
+            writer_first.add_task("reader", fn=_sample_reader, reads={"samples": "link"})
+            writer_first.add_excused_edge("link", "reader")
+
+            writer_first.compile()
+
+            self.assertEqual(writer_first._task_start_order, ("reader", "writer"))
+            self.assertEqual(writer_first._manager._ring_specs["link"].num_readers, 1)
+        finally:
+            writer_first._manager.close()
+
+        reader_first = Pipeline("pair")
+
+        try:
+            reader_first.add_stream("link", shape=(1,), dtype=np.float32, cache_align=False)
+            reader_first.add_task("reader", fn=_sample_reader, reads={"samples": "link"})
+            reader_first.add_task("writer", fn=_source_task, writes={"samples": "link"})
+            reader_first.add_excused_edge("link", "reader")
+
+            reader_first.compile()
+
+            self.assertEqual(reader_first._task_start_order, ("writer", "reader"))
+        finally:
+            reader_first._manager.close()
+
+    def test_compile_keeps_unexcused_readers_on_a_shared_stream(self):
+        pipe = Pipeline("fanout")
+
+        try:
+            pipe.add_stream("samples", shape=(1,), dtype=np.float32, cache_align=False)
+            pipe.add_task("writer", fn=_source_task, writes={"samples": "samples"})
+            pipe.add_task("reader_a", fn=_sample_reader, reads={"samples": "samples"})
+            pipe.add_task("reader_b", fn=_sample_reader, reads={"samples": "samples"})
+            pipe.add_excused_edge("samples", "reader_a")
+
+            pipe.compile()
+
+            self.assertEqual(pipe._manager._ring_specs["samples"].num_readers, 2)
+            self.assertLess(pipe._task_order.index("writer"), pipe._task_order.index("reader_b"))
+            self.assertIn("reader_a", pipe._task_order)
+            self.assertEqual(pipe._manager._task_specs["reader_a"].reading_rings, ("samples",))
+        finally:
+            pipe._manager.close()
+
+    def test_add_excused_edge_rejects_unknown_stream(self):
+        pipe = Pipeline("radar")
+        pipe.add_task("sink", fn=_task_fn)
+
+        with self.assertRaisesRegex(ValueError, "Stream 'missing' is not registered"):
+            pipe.add_excused_edge("missing", "sink")
+
+    def test_add_excused_edge_rejects_unknown_task(self):
+        pipe = Pipeline("radar")
+        pipe.add_stream("samples", shape=(1,), dtype=np.float32)
+
+        with self.assertRaisesRegex(ValueError, "Task 'missing' is not registered"):
+            pipe.add_excused_edge("samples", "missing")
+
+    def test_add_excused_edge_rejects_duplicate(self):
+        pipe = Pipeline("radar")
+        pipe.add_stream("samples", shape=(1,), dtype=np.float32)
+        pipe.add_task("sink", fn=_sample_reader, reads={"samples": "samples"})
+        pipe.add_excused_edge("samples", "sink")
+
+        with self.assertRaisesRegex(ValueError, "already excused"):
+            pipe.add_excused_edge("samples", "sink")
+
+    def test_add_excused_edge_rejects_closed_pipeline(self):
+        pipe = Pipeline("radar")
+        pipe.add_stream("samples", shape=(1,), dtype=np.float32)
+        pipe.add_task("sink", fn=_task_fn)
+        pipe.close()
+
+        with self.assertRaisesRegex(RuntimeError, "Pipeline is closed"):
+            pipe.add_excused_edge("samples", "sink")
+
     def test_compile_rejects_unknown_read_stream(self):
         pipe = Pipeline("radar")
         pipe.add_stream("samples", shape=(4,), dtype=np.float32)

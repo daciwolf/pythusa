@@ -15,6 +15,7 @@ except ModuleNotFoundError:  # pragma: no cover - environment dependency
 
 _FRAME = np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32) if np is not None else None
 _EXPECTED = np.array([2.0, 4.0, 6.0, 8.0], dtype=np.float32) if np is not None else None
+_REPLY = np.array([10.0], dtype=np.float32) if np is not None else None
 
 
 def _runtime_source(samples) -> None:
@@ -59,6 +60,30 @@ def _toggle_runtime_sink(samples, done) -> None:
         if seen == [1, 2]:
             done.signal()
             return
+
+
+def _excused_control(feedback, command, got_reply) -> None:
+    command.write(_FRAME)
+    while True:
+        frame = feedback.read()
+        if frame is None:
+            time.sleep(0.001)
+            continue
+        if np.array_equal(frame, _REPLY):
+            got_reply.signal()
+        return
+
+
+def _excused_plant(command, feedback, got_command) -> None:
+    while True:
+        frame = command.read()
+        if frame is None:
+            time.sleep(0.001)
+            continue
+        if np.array_equal(frame, _FRAME):
+            got_command.signal()
+        feedback.write(_REPLY)
+        return
 
 
 def _look_runtime_sink(samples, done) -> None:
@@ -158,6 +183,40 @@ class PipelineRuntimeTests(unittest.TestCase):
             pipe.start()
 
             self.assertTrue(pipe._manager._events["done"].wait(timeout=3.0))
+        finally:
+            pipe.close()
+
+    def test_excused_edge_passes_frames_in_both_directions(self) -> None:
+        pipe = Pipeline("feedback-runtime")
+
+        try:
+            pipe.add_stream("forward", shape=(4,), dtype=np.float32, cache_align=False)
+            pipe.add_stream("back", shape=(1,), dtype=np.float32, cache_align=False)
+            pipe.add_event("got_command")
+            pipe.add_event("got_reply")
+            pipe.add_task(
+                "control",
+                fn=_excused_control,
+                reads={"feedback": "back"},
+                writes={"command": "forward"},
+                events={"got_reply": "got_reply"},
+            )
+            pipe.add_task(
+                "plant",
+                fn=_excused_plant,
+                reads={"command": "forward"},
+                writes={"feedback": "back"},
+                events={"got_command": "got_command"},
+            )
+            pipe.add_excused_edge("back", "control")
+
+            pipe.start()
+
+            self.assertTrue(pipe._manager._events["got_command"].wait(timeout=3.0))
+            self.assertTrue(pipe._manager._events["got_reply"].wait(timeout=3.0))
+            pipe.join(timeout=3.0)
+            self.assertFalse(pipe._manager._processes["control"].is_alive())
+            self.assertFalse(pipe._manager._processes["plant"].is_alive())
         finally:
             pipe.close()
 
