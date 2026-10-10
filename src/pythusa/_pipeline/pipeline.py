@@ -44,6 +44,7 @@ class Pipeline:
         self._closed = False
         self._task_order: tuple[str, ...] = ()
         self._task_start_order: tuple[str, ...] = ()
+        self._excused_edges: set[tuple[str, str]] = set()
         self.add_task = _TaskRegistrationAPI(self)
 
     def add_stream(
@@ -141,6 +142,17 @@ class Pipeline:
         )
         return self
 
+    def add_excused_edge(self, stream_name: str, consumer_task_name: str) -> "Pipeline":
+        self._ensure_open()
+        if (stream_name, consumer_task_name) in self._excused_edges:
+            raise ValueError(f"Edge between stream '{stream_name}' and task '{consumer_task_name}' is already excused.")
+        if stream_name not in self._streams:
+            raise ValueError(f"Stream '{stream_name}' is not registered.")
+        if consumer_task_name not in self._tasks:
+            raise ValueError(f"Task '{consumer_task_name}' is not registered.")
+        self._excused_edges.add((stream_name, consumer_task_name))
+        return self
+
     def compile(self) -> None:
         self._ensure_open()
         if self._compiled:
@@ -157,6 +169,7 @@ class Pipeline:
             self._streams,
             stream_writers,
             stream_readers,
+            self._excused_edges,
         )
 
         self._task_order = topological_task_order(task_graph)

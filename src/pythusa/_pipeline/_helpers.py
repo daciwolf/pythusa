@@ -64,6 +64,7 @@ def build_task_graph(
     streams: dict[str, dict[str, Any]],
     stream_writers: dict[str, str],
     stream_readers: dict[str, list[str]],
+    excused_edges: set[tuple[str, str]], # stream_name , consumer_task_name
 ) -> dict[str, set[str]]:
     task_graph = {name: set() for name in tasks}
 
@@ -77,6 +78,8 @@ def build_task_graph(
             raise ValueError(f"Stream '{stream_name}' does not have any readers.")
 
         for reader in readers:
+            if (stream_name, reader) in excused_edges:
+                continue
             task_graph[reader].add(writer)
 
     return task_graph

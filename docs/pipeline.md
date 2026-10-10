@@ -36,6 +36,8 @@ Most pipelines follow the same sequence:
 5. Start the pipeline with `start()` or `run()`.
 6. Stop, join, or close it explicitly, or use it as a context manager.
 
+If one read is a feedback path, call `add_excused_edge(...)` after that stream and consumer task exist, and before `compile()` or `start()`.
+
 In factory-line terms:
 
 - you name the machines
@@ -241,6 +243,43 @@ def sink(samples) -> None:
 
 This decorator form is only for plain `add_task(...)`.
 Controlled-task registration uses explicit `fn=...`.
+
+## Excused Edges
+
+Compile turns every read into a dependency: that reader is ordered after the stream's writer. A feedback read closes a cycle, and compile rejects cycles.
+
+Excuse the feedback read so it stays on the ring but drops out of the task graph:
+
+```python
+pipe.add_stream("forward", shape=(8,), dtype=np.float32)
+pipe.add_stream("feedback", shape=(1,), dtype=np.float32)
+
+pipe.add_task(
+    "control",
+    fn=control,
+    reads={"feedback": "feedback"},
+    writes={"command": "forward"},
+)
+pipe.add_task(
+    "plant",
+    fn=plant,
+    reads={"command": "forward"},
+    writes={"feedback": "feedback"},
+)
+pipe.add_excused_edge("feedback", "control")
+```
+
+`add_excused_edge(stream_name, consumer_task_name)` skips that one reader-to-writer edge. The stream is still a normal ring:
+
+- it still needs exactly one writer and at least one reader
+- the excused task is still a reader, including reader count and backpressure
+- other readers of the same stream still depend on the writer
+
+Call it after both the stream and the consumer task are registered, and before `compile()` or `start()`. Excusing the same pair twice raises `ValueError`. An unknown stream or task name raises `ValueError`.
+
+Start order follows the edges that remain. In the example above, `control` no longer has to start after `plant`. `plant` still starts after `control`, because the `forward` read is a normal edge.
+
+`save()` does not persist excused edges. After `reconstruct()`, register them again before compile.
 
 ## Controlled Tasks
 
@@ -465,7 +504,7 @@ with pythusa.Pipeline("demo") as pipe:
 Method behavior:
 
 - `compile()`: validates the graph and registers runtime objects
-- `start()`: compiles if needed, then starts tasks in reverse topological order
+- `start()`: compiles if needed, then starts tasks in reverse topological order. Excused edges are left out of that order.
 - `run()`: convenience method for `start()` followed by `join()`
 - `stop()`: requests shutdown of running worker processes
 - `join()`: waits for worker processes to exit
@@ -530,6 +569,7 @@ Important limitation:
 
 - saved task callables must be importable top-level functions
 - lambdas, nested functions, and other non-importable callables are not supported
+- excused edges are not saved. Register them again after `reconstruct()`
 
 ## Errors And Current Limits
 
@@ -538,7 +578,7 @@ The constraints are there to keep the execution model explicit.
 
 Current unsupported or constrained patterns:
 
-- cyclic task graphs are not supported
+- cyclic task graphs are rejected unless each edge that closes the cycle is excused with `add_excused_edge(...)`
 - multiple writers to one stream are not supported
 - arbitrary Python objects as stream payloads are not supported
 - variable-shape frames on one stream are not supported
